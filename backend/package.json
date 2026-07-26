@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",
     "codegen": "kysely-codegen --env-file .env --out-file src/db/types.ts",
-    "seed": "tsx src/seed/seed.ts"
+    "seed": "tsx src/seed/seed.ts",
+    "rebuild-derived": "tsx src/scripts/rebuildDerived.ts"
   },
   "keywords": [],
   "author": "",

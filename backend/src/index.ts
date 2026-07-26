@@ -5,6 +5,7 @@ import { sql } from 'kysely';
 import { db } from './db/index';
 import authRouter from './routes/auth';
 import publicRouter from './routes/public';
+import scoringRouter from './routes/scoring';
 
 export const app = express();
 
@@ -26,6 +27,7 @@ app.get('/health/db', async (_req, res) => {
 });
 
 app.use('/auth', authRouter);
+app.use(scoringRouter);
 app.use(publicRouter);
 
 if (process.env.NODE_ENV !== 'test') {
