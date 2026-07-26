@@ -8,9 +8,11 @@ export interface AuthPayload {
   is_platform_admin: boolean;
 }
 
-declare module 'express-serve-static-core' {
-  interface Request {
-    user?: AuthPayload;
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthPayload;
+    }
   }
 }
 

@@ -4,6 +4,7 @@ import cors from 'cors';
 import { sql } from 'kysely';
 import { db } from './db/index';
 import authRouter from './routes/auth';
+import publicRouter from './routes/public';
 
 export const app = express();
 
@@ -25,6 +26,7 @@ app.get('/health/db', async (_req, res) => {
 });
 
 app.use('/auth', authRouter);
+app.use(publicRouter);
 
 if (process.env.NODE_ENV !== 'test') {
   const port = process.env.PORT ?? 3000;
