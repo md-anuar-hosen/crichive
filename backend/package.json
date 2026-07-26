@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",
-    "codegen": "kysely-codegen --out-file src/db/types.ts"
+    "codegen": "kysely-codegen --env-file .env --out-file src/db/types.ts",
+    "seed": "tsx src/seed/seed.ts"
   },
   "keywords": [],
   "author": "",
