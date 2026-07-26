@@ -16,6 +16,8 @@ describe('scoring API (Phase 5)', () => {
   const p3 = randomUUID(); // team B bowler / opener
   const p4 = randomUUID(); // team B opener (non-striker)
   const matchId = randomUUID();
+  const stageId = randomUUID();
+  const groupId = randomUUID();
 
   let token: string;
 
@@ -81,9 +83,19 @@ describe('scoring API (Phase 5)', () => {
       ])
       .execute();
 
+    await db.insertInto('stages').values({ id: stageId, tournament_id: tournamentId, kind: 'group', name: 'Group Stage', sequence: 1 }).execute();
+    await db.insertInto('groups').values({ id: groupId, stage_id: stageId, name: 'Group A' }).execute();
+    await db
+      .insertInto('group_teams')
+      .values([
+        { group_id: groupId, team_id: teamAId },
+        { group_id: groupId, team_id: teamBId },
+      ])
+      .execute();
+
     await db
       .insertInto('matches')
-      .values({ id: matchId, tournament_id: tournamentId, team_a_id: teamAId, team_b_id: teamBId, match_number: 1 })
+      .values({ id: matchId, tournament_id: tournamentId, group_id: groupId, stage_id: stageId, team_a_id: teamAId, team_b_id: teamBId, match_number: 1 })
       .execute();
 
     token = signAuthToken({ sub: organizerId, is_platform_admin: false });
@@ -98,6 +110,11 @@ describe('scoring API (Phase 5)', () => {
     await db.deleteFrom('innings').where('match_id', '=', matchId).execute();
     await db.deleteFrom('match_players').where('match_id', '=', matchId).execute();
     await db.deleteFrom('matches').where('id', '=', matchId).execute();
+    await db.deleteFrom('standings').where('group_id', '=', groupId).execute();
+    await db.deleteFrom('group_teams').where('group_id', '=', groupId).execute();
+    await db.deleteFrom('groups').where('id', '=', groupId).execute();
+    await db.deleteFrom('stages').where('id', '=', stageId).execute();
+    await db.deleteFrom('player_career_stats').where('player_id', 'in', [p1, p2, p3, p4]).execute();
     await db.deleteFrom('team_squads').where('tournament_id', '=', tournamentId).execute();
     await db.deleteFrom('players').where('id', 'in', [p1, p2, p3, p4]).execute();
     await db.deleteFrom('tournament_teams').where('tournament_id', '=', tournamentId).execute();
@@ -222,12 +239,54 @@ describe('scoring API (Phase 5)', () => {
     expect(finalMatch.result).toBe('team_a_won');
     expect(finalMatch.win_margin_runs).toBe(10);
 
+    // Match completion should have recomputed the group's standings (Team A won 13-3: NRR = 13 - 3 = 10 for A, -10 for B).
+    const standingsRows = await db
+      .selectFrom('standings')
+      .selectAll()
+      .where('group_id', '=', groupId)
+      .orderBy('rank', 'asc')
+      .execute();
+    expect(standingsRows).toHaveLength(2);
+    expect(standingsRows[0]).toMatchObject({ team_id: teamAId, played: 1, won: 1, lost: 0, points: 2, rank: 1 });
+    expect(Number(standingsRows[0].net_run_rate)).toBeCloseTo(10, 3);
+    expect(standingsRows[1]).toMatchObject({ team_id: teamBId, played: 1, won: 0, lost: 1, points: 0, rank: 2 });
+    expect(Number(standingsRows[1].net_run_rate)).toBeCloseTo(-10, 3);
+
+    // ... and player_career_stats for everyone who played.
+    const p1Stats = await db.selectFrom('player_career_stats').selectAll().where('player_id', '=', p1).executeTakeFirstOrThrow();
+    expect(p1Stats).toMatchObject({
+      matches: 1,
+      innings_batted: 1,
+      runs: 13,
+      balls_faced: 6,
+      highest_score: 13,
+      not_outs: 1,
+      fours: 1,
+      sixes: 1,
+      innings_bowled: 1,
+      legal_balls_bowled: 6,
+      runs_conceded: 3,
+      wickets: 0,
+    });
+
+    const p3Stats = await db.selectFrom('player_career_stats').selectAll().where('player_id', '=', p3).executeTakeFirstOrThrow();
+    expect(p3Stats).toMatchObject({
+      matches: 1,
+      innings_batted: 1,
+      runs: 3,
+      balls_faced: 6,
+      innings_bowled: 1,
+      legal_balls_bowled: 6,
+      runs_conceded: 13,
+      wickets: 0,
+    });
+
     // Snapshot every derived row before rebuilding, then confirm rebuild-derived reproduces them byte-for-byte.
     const before = await snapshotDerivedTables(matchId);
     await db.transaction().execute((trx) => rebuildAllDerivedTables(trx));
     const after = await snapshotDerivedTables(matchId);
     expect(after).toEqual(before);
-  }, 30000);
+  }, 60000);
 });
 
 async function snapshotDerivedTables(matchId: string) {

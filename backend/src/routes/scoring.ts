@@ -12,6 +12,8 @@ import { computeNextBallPosition, toDomainDelivery } from '../services/deliveryM
 import { applyScorecardToDerivedTables } from '../services/derivedTables';
 import { getMatchScorecard } from '../services/matchScorecard';
 import { loadTournamentRules } from '../services/rules';
+import { recomputeGroupStandings } from '../services/standingsService';
+import { recomputePlayerCareerStats } from '../services/careerStatsService';
 
 const router = Router();
 
@@ -574,6 +576,16 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
         .execute();
     }
   });
+
+  // Standings and career stats are caches over completed matches — recompute
+  // them now that this one just finished.
+  if (match.group_id) {
+    await recomputeGroupStandings(match.group_id);
+  }
+  const matchPlayers = await db.selectFrom('match_players').select('player_id').where('match_id', '=', match.id).execute();
+  if (matchPlayers.length) {
+    await recomputePlayerCareerStats(matchPlayers.map((p) => p.player_id));
+  }
 
   res.json({ ok: true, outcome });
 });
