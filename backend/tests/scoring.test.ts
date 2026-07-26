@@ -122,6 +122,7 @@ describe('scoring API (Phase 5)', () => {
     await db.deleteFrom('tournament_memberships').where('tournament_id', '=', tournamentId).execute();
     await db.deleteFrom('tournament_rules').where('tournament_id', '=', tournamentId).execute();
     await db.deleteFrom('tournaments').where('id', '=', tournamentId).execute();
+    await db.deleteFrom('audit_log').where('actor_user_id', '=', organizerId).execute();
     await db.deleteFrom('users').where('id', '=', organizerId).execute();
   });
 

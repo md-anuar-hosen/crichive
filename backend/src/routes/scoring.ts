@@ -15,6 +15,7 @@ import { loadTournamentRules } from '../services/rules';
 import { recomputeGroupStandings } from '../services/standingsService';
 import { recomputePlayerCareerStats } from '../services/careerStatsService';
 import { broadcastDelivery } from '../realtime/hub';
+import { writeAuditLog } from '../services/auditLog';
 
 const router = Router();
 
@@ -90,7 +91,7 @@ router.post('/matches/:id/toss', requireAuth, requireMatchRole('organizer', 'sco
       .where('id', '=', match.id)
       .execute();
 
-    return trx
+    const created = await trx
       .insertInto('innings')
       .values({
         id: randomUUID(),
@@ -102,6 +103,16 @@ router.post('/matches/:id/toss', requireAuth, requireMatchRole('organizer', 'sco
       })
       .returningAll()
       .executeTakeFirstOrThrow();
+
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'match',
+      entityId: match.id,
+      action: 'toss',
+      afterState: { winner_team_id, decision, innings_id: created.id },
+    });
+
+    return created;
   });
 
   res.status(201).json({ innings });
@@ -165,7 +176,7 @@ router.post('/matches/:id/playing-xi', requireAuth, requireMatchRole('organizer'
   const rows = await db.transaction().execute(async (trx) => {
     await trx.deleteFrom('match_players').where('match_id', '=', match.id).where('team_id', '=', team_id).execute();
 
-    return trx
+    const inserted = await trx
       .insertInto('match_players')
       .values(
         player_ids.map((playerId, index) => ({
@@ -179,6 +190,16 @@ router.post('/matches/:id/playing-xi', requireAuth, requireMatchRole('organizer'
       )
       .returningAll()
       .execute();
+
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'squad',
+      entityId: match.id,
+      action: 'set_playing_xi',
+      afterState: { team_id, player_ids, captain_id, keeper_id },
+    });
+
+    return inserted;
   });
 
   res.status(201).json({ playing_xi: rows });
@@ -443,18 +464,15 @@ router.post('/matches/:id/deliveries/:deliveryId/void', requireAuth, requireMatc
       .returningAll()
       .executeTakeFirstOrThrow();
 
-    await trx
-      .insertInto('audit_log')
-      .values({
-        actor_user_id: req.user!.sub,
-        entity_type: 'delivery',
-        entity_id: delivery.innings_id,
-        action: 'void',
-        before_state: JSON.stringify({ delivery_id: delivery.id, ...delivery }),
-        after_state: JSON.stringify({ delivery_id: voided.id, voided_at: voided.voided_at }),
-        reason: parsed.data.reason,
-      })
-      .execute();
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'delivery',
+      entityId: delivery.innings_id,
+      action: 'void',
+      beforeState: { delivery_id: delivery.id, ...delivery },
+      afterState: { delivery_id: voided.id, voided_at: voided.voided_at },
+      reason: parsed.data.reason,
+    });
 
     const priorRows = await trx
       .selectFrom('deliveries')
@@ -521,6 +539,14 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
         .execute();
 
       await trx.updateTable('matches').set({ status: 'innings_break', updated_at: new Date() }).where('id', '=', match.id).execute();
+
+      await writeAuditLog(trx, {
+        actorUserId: req.user!.sub,
+        entityType: 'match',
+        entityId: match.id,
+        action: 'close_innings',
+        afterState: { innings_number: 1, next_innings_number: 2 },
+      });
     });
 
     res.json({ ok: true, next_innings_number: 2 });
@@ -562,10 +588,7 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
         .set({ result: 'tie', status: 'completed', result_note: 'Tied', updated_at: new Date() })
         .where('id', '=', match.id)
         .execute();
-      return;
-    }
-
-    if (outcome.kind === 'batting_first_won') {
+    } else if (outcome.kind === 'batting_first_won') {
       await trx
         .updateTable('matches')
         .set({
@@ -592,6 +615,14 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
         .where('id', '=', match.id)
         .execute();
     }
+
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'match',
+      entityId: match.id,
+      action: 'complete',
+      afterState: { innings_number: inningsNumber, outcome },
+    });
   });
 
   // Standings and career stats are caches over completed matches — recompute
