@@ -14,6 +14,7 @@ import { getMatchScorecard } from '../services/matchScorecard';
 import { loadTournamentRules } from '../services/rules';
 import { recomputeGroupStandings } from '../services/standingsService';
 import { recomputePlayerCareerStats } from '../services/careerStatsService';
+import { broadcastDelivery } from '../realtime/hub';
 
 const router = Router();
 
@@ -353,6 +354,22 @@ router.post('/matches/:id/deliveries', requireAuth, requireMatchRole('organizer'
       await applyScorecardToDerivedTables(trx, innings.id, scorecard);
 
       return { delivery: inserted, scorecard };
+    });
+
+    broadcastDelivery({
+      type: 'delivery',
+      matchId: match.id,
+      inningsId: innings.id,
+      delivery: result.delivery,
+      totals: {
+        runs: result.scorecard.runs,
+        wickets: result.scorecard.wickets,
+        legalBalls: result.scorecard.legalBalls,
+        extras: result.scorecard.extras,
+      },
+      striker: result.scorecard.battingCards.find((b) => b.playerId === body.striker_id) ?? null,
+      nonStriker: result.scorecard.battingCards.find((b) => b.playerId === body.non_striker_id) ?? null,
+      bowler: result.scorecard.bowlingCards.find((b) => b.playerId === body.bowler_id) ?? null,
     });
 
     res.status(201).json({

@@ -6,6 +6,7 @@ import { db } from './db/index';
 import authRouter from './routes/auth';
 import publicRouter from './routes/public';
 import scoringRouter from './routes/scoring';
+import { attachRealtimeServer } from './realtime/server';
 
 export const app = express();
 
@@ -32,7 +33,8 @@ app.use(publicRouter);
 
 if (process.env.NODE_ENV !== 'test') {
   const port = process.env.PORT ?? 3000;
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`CricHive backend listening on port ${port}`);
   });
+  attachRealtimeServer(server);
 }
