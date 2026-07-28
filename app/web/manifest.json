@@ -1,11 +1,11 @@
 {
-    "name": "crichive_app",
-    "short_name": "crichive_app",
+    "name": "CricHive",
+    "short_name": "CricHive",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1B5E3A",
+    "theme_color": "#1B5E3A",
+    "description": "Cricket scoring and tournament platform.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

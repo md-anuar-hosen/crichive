@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/user.dart';
 import '../state/auth_controller.dart';
+import 'data_request_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -19,7 +20,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final auth = ref.watch(authControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(
+        title: const Text('Profile'),
+        actions: [
+          IconButton(
+            tooltip: 'Data & privacy',
+            icon: const Icon(Icons.privacy_tip_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DataRequestScreen()),
+            ),
+          ),
+        ],
+      ),
       body: switch (auth.status) {
         AuthStatus.loading => const Center(child: CircularProgressIndicator()),
         AuthStatus.authenticated => _SignedInView(user: auth.user!),

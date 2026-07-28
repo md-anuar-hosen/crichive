@@ -159,6 +159,27 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------------
+  // GDPR data requests
+  // ---------------------------------------------------------------------
+
+  Future<void> submitDataRequest({
+    required String raisedByEmail,
+    required String kind,
+    String? playerId,
+    String? details,
+  }) async {
+    await _dio.post(
+      '/data-requests',
+      data: {
+        'raised_by_email': raisedByEmail,
+        'kind': kind,
+        if (playerId != null && playerId.isNotEmpty) 'player_id': playerId,
+        if (details != null && details.isNotEmpty) 'details': details,
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------
   // Public read routes
   // ---------------------------------------------------------------------
 
