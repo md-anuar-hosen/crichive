@@ -2,27 +2,52 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/match_detail.dart';
+import '../realtime/match_realtime_client.dart';
 import '../state/providers.dart';
 import '../widgets/async_value_view.dart';
 
-class MatchScreen extends ConsumerWidget {
+class MatchScreen extends ConsumerStatefulWidget {
   const MatchScreen({super.key, required this.matchId});
 
   final String matchId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final match = ref.watch(matchProvider(matchId));
+  ConsumerState<MatchScreen> createState() => _MatchScreenState();
+}
+
+class _MatchScreenState extends ConsumerState<MatchScreen> {
+  MatchRealtimeClient? _realtime;
+
+  void _ensureRealtimeFor(MatchDetail match) {
+    if (_realtime != null || !match.isLive) return;
+    final client = MatchRealtimeClient(matchId: widget.matchId)
+      ..connect()
+      ..updates.listen((_) {
+        if (mounted) ref.invalidate(matchProvider(widget.matchId));
+      });
+    _realtime = client;
+  }
+
+  @override
+  void dispose() {
+    _realtime?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final match = ref.watch(matchProvider(widget.matchId));
+    match.whenData(_ensureRealtimeFor);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Match')),
       body: RefreshIndicator(
         onRefresh: () async {
-          final _ = await ref.refresh(matchProvider(matchId).future);
+          final _ = await ref.refresh(matchProvider(widget.matchId).future);
         },
         child: AsyncValueView(
           value: match,
-          onRetry: () => ref.invalidate(matchProvider(matchId)),
+          onRetry: () => ref.invalidate(matchProvider(widget.matchId)),
           data: (context, m) => _MatchBody(match: m),
         ),
       ),
