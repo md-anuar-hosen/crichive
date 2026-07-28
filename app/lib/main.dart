@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'screens/live_screen.dart';
 import 'screens/match_screen.dart';
 import 'screens/player_profile_screen.dart';
+import 'screens/profile_screen.dart';
 import 'screens/team_squad_screen.dart';
 import 'screens/tournament_detail_screen.dart';
 import 'screens/tournament_list_screen.dart';
@@ -25,6 +26,9 @@ final _router = GoRouter(
         ]),
         StatefulShellBranch(routes: [
           GoRoute(path: '/live', builder: (context, state) => const LiveScreen()),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(path: '/profile', builder: (context, state) => const ProfileScreen()),
         ]),
       ],
     ),
@@ -78,6 +82,7 @@ class _RootShell extends StatelessWidget {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.emoji_events_outlined), selectedIcon: Icon(Icons.emoji_events), label: 'Tournaments'),
           NavigationDestination(icon: Icon(Icons.live_tv_outlined), selectedIcon: Icon(Icons.live_tv), label: 'Live'),
+          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
     );

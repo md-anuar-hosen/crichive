@@ -8,6 +8,7 @@ import '../models/player.dart';
 import '../models/standing.dart';
 import '../models/team.dart';
 import '../models/tournament.dart';
+import '../models/user.dart';
 import 'api_exception.dart';
 
 const _defaultBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:3000');
@@ -58,6 +59,28 @@ class ApiClient {
       }
     }
     return error.copyWith(error: ApiException(response?.statusCode, message, fieldErrors: fieldErrors));
+  }
+
+  // ---------------------------------------------------------------------
+  // Auth routes
+  // ---------------------------------------------------------------------
+
+  Future<User> register({required String email, required String password, required String displayName}) async {
+    final res = await _dio.post(
+      '/auth/register',
+      data: {'email': email, 'password': password, 'display_name': displayName},
+    );
+    return User.fromJson((res.data as Map<String, dynamic>)['user'] as Map<String, dynamic>);
+  }
+
+  Future<String> login({required String email, required String password}) async {
+    final res = await _dio.post('/auth/login', data: {'email': email, 'password': password});
+    return (res.data as Map<String, dynamic>)['token'] as String;
+  }
+
+  Future<User> me() async {
+    final res = await _dio.get('/auth/me');
+    return User.fromJson((res.data as Map<String, dynamic>)['user'] as Map<String, dynamic>);
   }
 
   // ---------------------------------------------------------------------
