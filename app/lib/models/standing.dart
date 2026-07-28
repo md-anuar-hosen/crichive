@@ -1,3 +1,4 @@
+import 'json_utils.dart';
 import 'team.dart';
 
 class StandingRow {
@@ -31,7 +32,7 @@ class StandingRow {
         tied: json['tied'] as int,
         noResult: json['no_result'] as int,
         points: json['points'] as int,
-        netRunRate: (json['net_run_rate'] as num).toDouble(),
+        netRunRate: parseNumeric(json['net_run_rate']),
         rank: json['rank'] as int?,
       );
 }

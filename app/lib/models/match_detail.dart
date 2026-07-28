@@ -1,3 +1,4 @@
+import 'json_utils.dart';
 import 'team.dart';
 
 class InningsTotals {
@@ -146,7 +147,7 @@ class InningsDetail {
   final String bowlingTeamId;
   final bool isSuperOver;
   final int? target;
-  final int maxOvers;
+  final double maxOvers;
   final DateTime? closedAt;
   final InningsTotals? totals;
   final List<BattingCardRow> batting;
@@ -159,7 +160,7 @@ class InningsDetail {
         bowlingTeamId: json['bowling_team_id'] as String,
         isSuperOver: json['is_super_over'] as bool,
         target: json['target'] as int?,
-        maxOvers: json['max_overs'] as int,
+        maxOvers: parseNumeric(json['max_overs']),
         closedAt: json['closed_at'] == null ? null : DateTime.parse(json['closed_at'] as String),
         totals: json['totals'] == null ? null : InningsTotals.fromJson(json['totals'] as Map<String, dynamic>),
         batting: (json['batting'] as List).cast<Map<String, dynamic>>().map(BattingCardRow.fromJson).toList(),
