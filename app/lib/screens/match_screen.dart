@@ -3,8 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/match_detail.dart';
 import '../realtime/match_realtime_client.dart';
+import '../state/auth_controller.dart';
 import '../state/providers.dart';
 import '../widgets/async_value_view.dart';
+import 'playing_xi_screen.dart';
+import 'scoring_screen.dart';
+import 'toss_screen.dart';
 
 class MatchScreen extends ConsumerStatefulWidget {
   const MatchScreen({super.key, required this.matchId});
@@ -34,13 +38,58 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     super.dispose();
   }
 
+  void _onScoringAction(BuildContext context, String action, MatchDetail match) {
+    Widget screen;
+    switch (action) {
+      case 'toss':
+        screen = TossScreen(matchId: match.id);
+      case 'xi_a':
+        screen = PlayingXiScreen(
+          matchId: match.id,
+          teamId: match.teamA.id,
+          teamName: match.teamA.name,
+          tournamentSlug: match.tournamentSlug,
+        );
+      case 'xi_b':
+        screen = PlayingXiScreen(
+          matchId: match.id,
+          teamId: match.teamB.id,
+          teamName: match.teamB.name,
+          tournamentSlug: match.tournamentSlug,
+        );
+      case 'score':
+        screen = ScoringScreen(matchId: match.id);
+      default:
+        return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+
   @override
   Widget build(BuildContext context) {
     final match = ref.watch(matchProvider(widget.matchId));
     match.whenData(_ensureRealtimeFor);
+    final isAuthed = ref.watch(authControllerProvider).status == AuthStatus.authenticated;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Match')),
+      appBar: AppBar(
+        title: const Text('Match'),
+        actions: [
+          if (isAuthed)
+            match.whenOrNull(
+              data: (m) => PopupMenuButton<String>(
+                onSelected: (value) => _onScoringAction(context, value, m),
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'toss', child: Text('Record toss')),
+                  PopupMenuItem(value: 'xi_a', child: Text('Playing XI — ${m.teamA.label}')),
+                  PopupMenuItem(value: 'xi_b', child: Text('Playing XI — ${m.teamB.label}')),
+                  const PopupMenuItem(value: 'score', child: Text('Score')),
+                ],
+              ),
+            ) ??
+                const SizedBox.shrink(),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           final _ = await ref.refresh(matchProvider(widget.matchId).future);

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../models/delivery_result.dart';
 import '../models/fixture.dart';
 import '../models/live_match.dart';
 import '../models/match_detail.dart';
@@ -13,9 +14,9 @@ import 'api_exception.dart';
 
 const _defaultBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:3000');
 
-/// Wraps every backend route the app needs. Auth token attachment is wired
-/// up via [setTokenProvider] once the auth layer exists (Phase 2) — Phase 1
-/// only calls the public, unauthenticated routes.
+/// Wraps every backend route the app needs. [setTokenProvider] wires in the
+/// current JWT (if any) via an interceptor; scoring routes 403 server-side
+/// for users without the right tournament role.
 class ApiClient {
   ApiClient({String? baseUrl}) : _dio = Dio(BaseOptions(baseUrl: baseUrl ?? _defaultBaseUrl)) {
     _dio.interceptors.add(
@@ -81,6 +82,80 @@ class ApiClient {
   Future<User> me() async {
     final res = await _dio.get('/auth/me');
     return User.fromJson((res.data as Map<String, dynamic>)['user'] as Map<String, dynamic>);
+  }
+
+  // ---------------------------------------------------------------------
+  // Scoring routes (organizer/scorer only -- enforced server-side; a 403
+  // here means this user lacks the tournament role, not a client bug)
+  // ---------------------------------------------------------------------
+
+  Future<void> recordToss(String matchId, {required String winnerTeamId, required String decision}) async {
+    await _dio.post('/matches/$matchId/toss', data: {'winner_team_id': winnerTeamId, 'decision': decision});
+  }
+
+  Future<void> setPlayingXi(
+    String matchId, {
+    required String teamId,
+    required List<String> playerIds,
+    required String captainId,
+    required String keeperId,
+  }) async {
+    await _dio.post(
+      '/matches/$matchId/playing-xi',
+      data: {
+        'team_id': teamId,
+        'player_ids': playerIds,
+        'captain_id': captainId,
+        'keeper_id': keeperId,
+      },
+    );
+  }
+
+  Future<DeliveryResult> postDelivery(
+    String matchId, {
+    required String clientEventId,
+    required int inningsNumber,
+    required String strikerId,
+    required String nonStrikerId,
+    required String bowlerId,
+    int runsOffBat = 0,
+    int extraWides = 0,
+    int extraNoballs = 0,
+    int extraByes = 0,
+    int extraLegbyes = 0,
+    int extraPenalty = 0,
+    String? wicketKind,
+    String? playerOutId,
+    String? fielderId,
+  }) async {
+    final res = await _dio.post(
+      '/matches/$matchId/deliveries',
+      data: {
+        'client_event_id': clientEventId,
+        'innings_number': inningsNumber,
+        'striker_id': strikerId,
+        'non_striker_id': nonStrikerId,
+        'bowler_id': bowlerId,
+        'runs_off_bat': runsOffBat,
+        'extra_wides': extraWides,
+        'extra_noballs': extraNoballs,
+        'extra_byes': extraByes,
+        'extra_legbyes': extraLegbyes,
+        'extra_penalty': extraPenalty,
+        if (wicketKind != null) 'wicket_kind': wicketKind,
+        if (playerOutId != null) 'player_out_id': playerOutId,
+        if (fielderId != null) 'fielder_id': fielderId,
+      },
+    );
+    return DeliveryResult.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> voidDelivery(String matchId, String deliveryId, {required String reason}) async {
+    await _dio.post('/matches/$matchId/deliveries/$deliveryId/void', data: {'reason': reason});
+  }
+
+  Future<void> closeInnings(String matchId, int inningsNumber) async {
+    await _dio.post('/matches/$matchId/innings/$inningsNumber/close');
   }
 
   // ---------------------------------------------------------------------
