@@ -1,0 +1,54 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+
+import '../state/providers.dart';
+import '../widgets/async_value_view.dart';
+
+class TournamentListScreen extends ConsumerWidget {
+  const TournamentListScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tournaments = ref.watch(tournamentsProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Tournaments')),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          final _ = await ref.refresh(tournamentsProvider.future);
+        },
+        child: AsyncValueView(
+          value: tournaments,
+          onRetry: () => ref.invalidate(tournamentsProvider),
+          data: (context, page) {
+            if (page.data.isEmpty) {
+              return const EmptyState(message: 'No tournaments yet.');
+            }
+            return ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: page.data.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final t = page.data[index];
+                return ListTile(
+                  title: Text(t.name),
+                  subtitle: Text(
+                    [
+                      '${t.seasonYear}',
+                      if (t.organizerOrg != null) t.organizerOrg!,
+                      if (t.startsOn != null) DateFormat.yMMMd().format(t.startsOn!),
+                    ].join(' · '),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/tournaments/${t.slug}'),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
