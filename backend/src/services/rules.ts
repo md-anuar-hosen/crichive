@@ -23,5 +23,6 @@ export async function loadTournamentRules(db: Kysely<DB>, tournamentId: string):
     pointsNoResult: row.points_no_result,
     pointsLoss: row.points_loss,
     superOverOnTie: row.super_over_on_tie,
+    dlsEnabled: row.dls_enabled,
   };
 }

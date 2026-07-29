@@ -38,3 +38,23 @@ export function broadcastDelivery(delta: DeliveryDelta): void {
     }
   }
 }
+
+export interface InterruptionDelta {
+  type: 'interruption';
+  matchId: string;
+  inningsId: string;
+  inningsNumber: number;
+  maxOvers: number;
+  revisedTarget: number | null;
+  interruption: unknown;
+}
+
+/** Same read-only fan-out as broadcastDelivery, for CricHive Rain Rule updates. */
+export function broadcastInterruption(delta: InterruptionDelta): void {
+  const payload = JSON.stringify(delta);
+  for (const sub of subscriptions) {
+    if (sub.matchId === delta.matchId && sub.ws.readyState === sub.ws.OPEN) {
+      sub.ws.send(payload);
+    }
+  }
+}

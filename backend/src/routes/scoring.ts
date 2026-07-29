@@ -8,13 +8,15 @@ import { requireAuth, requireTournamentRole } from '../middleware/auth';
 import { requireMatchRole } from '../middleware/matchRole';
 import { buildScorecard, isNextDeliveryFreeHit, resolveMatchResult, validateDelivery } from '../domain/scoring';
 import type { Delivery } from '../domain/scoring';
+import { computeRevisedTarget, resourceAvailablePercent } from '../domain/rainRule';
+import type { RainInterruption } from '../domain/rainRule';
 import { computeNextBallPosition, toDomainDelivery } from '../services/deliveryMapping';
 import { applyScorecardToDerivedTables } from '../services/derivedTables';
 import { getMatchScorecard } from '../services/matchScorecard';
 import { loadTournamentRules } from '../services/rules';
 import { recomputeGroupStandings } from '../services/standingsService';
 import { recomputePlayerCareerStats } from '../services/careerStatsService';
-import { broadcastDelivery } from '../realtime/hub';
+import { broadcastDelivery, broadcastInterruption } from '../realtime/hub';
 import { writeAuditLog } from '../services/auditLog';
 
 const router = Router();
@@ -703,6 +705,159 @@ router.post('/matches/:id/abandon', requireAuth, requireMatchRole('organizer', '
   }
 
   res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// POST /matches/:id/innings/:n/interruption  (CricHive Rain Rule — Phase E)
+//
+// Records a rain/weather stoppage for the innings currently being bowled
+// and, from innings 2 onward, recomputes the revised target. This is our
+// own resource-based method, not the licensed DLS — see
+// backend/src/domain/rainRule for the disclaimer.
+// ---------------------------------------------------------------------------
+
+function toRainInterruption(row: { overs_remaining_before: string; overs_remaining_after: string; wickets_lost_at: number }): RainInterruption {
+  return {
+    oversRemainingBefore: Number(row.overs_remaining_before),
+    oversRemainingAfter: Number(row.overs_remaining_after),
+    wicketsLostAt: row.wickets_lost_at,
+  };
+}
+
+const interruptionSchema = z.object({
+  overs_remaining_after: z.number().min(0),
+  reason: z.string().trim().max(500).optional(),
+});
+
+router.post('/matches/:id/innings/:n/interruption', requireAuth, requireMatchRole('organizer', 'scorer'), async (req, res) => {
+  const match = await loadMatch(param(req.params.id));
+  if (!match) {
+    res.status(404).json({ error: 'Match not found' });
+    return;
+  }
+  if (!['toss_done', 'live', 'innings_break'].includes(match.status)) {
+    res.status(409).json({ error: `Match is not in progress (status: ${match.status})` });
+    return;
+  }
+
+  const rules = await loadTournamentRules(db, match.tournament_id);
+  if (!rules.dlsEnabled) {
+    res.status(409).json({ error: 'CricHive Rain Rule is not enabled for this tournament' });
+    return;
+  }
+
+  const inningsNumber = Number(param(req.params.n));
+  if (!Number.isInteger(inningsNumber) || inningsNumber < 1) {
+    res.status(400).json({ error: 'Invalid innings number' });
+    return;
+  }
+
+  const parsed = interruptionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Validation failed', fields: zodFieldErrors(parsed.error) });
+    return;
+  }
+
+  const innings = await db
+    .selectFrom('innings')
+    .selectAll()
+    .where('match_id', '=', match.id)
+    .where('innings_number', '=', inningsNumber)
+    .executeTakeFirst();
+  if (!innings) {
+    res.status(404).json({ error: `Innings ${inningsNumber} not found for this match` });
+    return;
+  }
+  if (innings.closed_at) {
+    res.status(422).json({ error: 'This innings is already closed' });
+    return;
+  }
+  if (innings.max_overs == null) {
+    res.status(422).json({ error: 'This innings has no overs quota set yet' });
+    return;
+  }
+
+  const totals = await db.selectFrom('innings_totals').selectAll().where('innings_id', '=', innings.id).executeTakeFirst();
+  const legalBalls = totals?.legal_balls ?? 0;
+  const wicketsLostAt = totals?.wickets ?? 0;
+
+  const maxOvers = Number(innings.max_overs);
+  const oversRemainingBefore = maxOvers - legalBalls / rules.ballsPerOver;
+  const oversRemainingAfter = parsed.data.overs_remaining_after;
+
+  if (oversRemainingAfter > oversRemainingBefore) {
+    res.status(400).json({ error: `overs_remaining_after cannot exceed the ${oversRemainingBefore.toFixed(1)} overs currently remaining` });
+    return;
+  }
+
+  const newMaxOvers = legalBalls / rules.ballsPerOver + oversRemainingAfter;
+  // Both innings are measured against the match's nominal (pre-interruption) overs
+  // quota, so a stoppage in one innings is judged on the same scale as the other.
+  const nominalOvers = match.overs_override ?? rules.oversPerInnings;
+
+  const result = await db.transaction().execute(async (trx) => {
+    const interruption = await trx
+      .insertInto('match_interruptions')
+      .values({
+        innings_id: innings.id,
+        overs_remaining_before: oversRemainingBefore,
+        overs_remaining_after: oversRemainingAfter,
+        wickets_lost_at: wicketsLostAt,
+        reason: parsed.data.reason ?? null,
+        recorded_by: req.user!.sub,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    await trx.updateTable('innings').set({ max_overs: newMaxOvers }).where('id', '=', innings.id).execute();
+
+    let revisedTarget: number | null = null;
+    if (inningsNumber > 1) {
+      const firstInnings = await trx
+        .selectFrom('innings')
+        .selectAll()
+        .where('match_id', '=', match.id)
+        .where('innings_number', '=', inningsNumber - 1)
+        .executeTakeFirstOrThrow();
+      const firstInningsTotals = await trx.selectFrom('innings_totals').selectAll().where('innings_id', '=', firstInnings.id).executeTakeFirst();
+      const firstInterruptionRows = await trx.selectFrom('match_interruptions').selectAll().where('innings_id', '=', firstInnings.id).execute();
+      const secondInterruptionRows = await trx.selectFrom('match_interruptions').selectAll().where('innings_id', '=', innings.id).execute();
+
+      const firstResource = resourceAvailablePercent(firstInterruptionRows.map(toRainInterruption), nominalOvers);
+      const secondResource = resourceAvailablePercent(secondInterruptionRows.map(toRainInterruption), nominalOvers);
+
+      revisedTarget = computeRevisedTarget({
+        firstInningsRuns: firstInningsTotals?.runs ?? 0,
+        firstInningsResourcePercent: firstResource,
+        secondInningsResourcePercent: secondResource,
+      });
+
+      await trx.updateTable('innings').set({ target: revisedTarget }).where('id', '=', innings.id).execute();
+    }
+
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'match',
+      entityId: match.id,
+      action: 'rain_interruption',
+      afterState: { innings_number: inningsNumber, interruption, new_max_overs: newMaxOvers, revised_target: revisedTarget },
+      reason: parsed.data.reason,
+    });
+
+    return { interruption, revisedTarget };
+  });
+
+  broadcastInterruption({
+    type: 'interruption',
+    matchId: match.id,
+    inningsId: innings.id,
+    inningsNumber,
+    maxOvers: newMaxOvers,
+    revisedTarget: result.revisedTarget,
+    interruption: result.interruption,
+  });
+
+  res.status(201).json({ interruption: result.interruption, max_overs: newMaxOvers, revised_target: result.revisedTarget });
 });
 
 // ---------------------------------------------------------------------------

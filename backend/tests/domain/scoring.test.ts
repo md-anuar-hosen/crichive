@@ -22,6 +22,7 @@ const rules: TournamentRules = {
   pointsNoResult: 1,
   pointsLoss: 0,
   superOverOnTie: true,
+  dlsEnabled: false,
 };
 
 function makeDelivery(overrides: Partial<Delivery> & Pick<Delivery, 'sequence' | 'ballInOver'>): Delivery {

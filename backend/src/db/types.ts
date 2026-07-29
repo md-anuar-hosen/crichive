@@ -202,6 +202,17 @@ export interface Matches {
   winner_team_id: string | null;
 }
 
+export interface MatchInterruptions {
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  innings_id: string;
+  overs_remaining_after: Numeric;
+  overs_remaining_before: Numeric;
+  reason: string | null;
+  recorded_by: string | null;
+  wickets_lost_at: number;
+}
+
 export interface MatchPlayers {
   batting_order: number | null;
   is_captain: Generated<boolean>;
@@ -217,6 +228,109 @@ export interface MatchScorers {
   is_primary: Generated<boolean>;
   match_id: string;
   user_id: string;
+}
+
+export interface NeonAuthAccount {
+  accessToken: string | null;
+  accessTokenExpiresAt: Timestamp | null;
+  accountId: string;
+  createdAt: Generated<Timestamp>;
+  id: Generated<string>;
+  idToken: string | null;
+  password: string | null;
+  providerId: string;
+  refreshToken: string | null;
+  refreshTokenExpiresAt: Timestamp | null;
+  scope: string | null;
+  updatedAt: Timestamp;
+  userId: string;
+}
+
+export interface NeonAuthInvitation {
+  createdAt: Generated<Timestamp>;
+  email: string;
+  expiresAt: Timestamp;
+  id: Generated<string>;
+  inviterId: string;
+  organizationId: string;
+  role: string | null;
+  status: string;
+}
+
+export interface NeonAuthJwks {
+  createdAt: Timestamp;
+  expiresAt: Timestamp | null;
+  id: Generated<string>;
+  privateKey: string;
+  publicKey: string;
+}
+
+export interface NeonAuthMember {
+  createdAt: Timestamp;
+  id: Generated<string>;
+  organizationId: string;
+  role: string;
+  userId: string;
+}
+
+export interface NeonAuthOrganization {
+  createdAt: Timestamp;
+  id: Generated<string>;
+  logo: string | null;
+  metadata: string | null;
+  name: string;
+  slug: string;
+}
+
+export interface NeonAuthProjectConfig {
+  allow_localhost: boolean;
+  created_at: Generated<Timestamp>;
+  email_and_password: Json | null;
+  email_provider: Json | null;
+  endpoint_id: string;
+  id: Generated<string>;
+  name: string;
+  plugin_configs: Json | null;
+  social_providers: Json;
+  trusted_origins: Json;
+  updated_at: Generated<Timestamp>;
+  webhook_config: Json | null;
+}
+
+export interface NeonAuthSession {
+  activeOrganizationId: string | null;
+  createdAt: Generated<Timestamp>;
+  expiresAt: Timestamp;
+  id: Generated<string>;
+  impersonatedBy: string | null;
+  ipAddress: string | null;
+  token: string;
+  updatedAt: Timestamp;
+  userAgent: string | null;
+  userId: string;
+}
+
+export interface NeonAuthUser {
+  banExpires: Timestamp | null;
+  banned: boolean | null;
+  banReason: string | null;
+  createdAt: Generated<Timestamp>;
+  email: string;
+  emailVerified: boolean;
+  id: Generated<string>;
+  image: string | null;
+  name: string;
+  role: string | null;
+  updatedAt: Generated<Timestamp>;
+}
+
+export interface NeonAuthVerification {
+  createdAt: Generated<Timestamp>;
+  expiresAt: Timestamp;
+  id: Generated<string>;
+  identifier: string;
+  updatedAt: Generated<Timestamp>;
+  value: string;
 }
 
 export interface Partnerships {
@@ -398,9 +512,19 @@ export interface DB {
   groups: Groups;
   innings: Innings;
   innings_totals: InningsTotals;
+  match_interruptions: MatchInterruptions;
   match_players: MatchPlayers;
   match_scorers: MatchScorers;
   matches: Matches;
+  "neon_auth.account": NeonAuthAccount;
+  "neon_auth.invitation": NeonAuthInvitation;
+  "neon_auth.jwks": NeonAuthJwks;
+  "neon_auth.member": NeonAuthMember;
+  "neon_auth.organization": NeonAuthOrganization;
+  "neon_auth.project_config": NeonAuthProjectConfig;
+  "neon_auth.session": NeonAuthSession;
+  "neon_auth.user": NeonAuthUser;
+  "neon_auth.verification": NeonAuthVerification;
   partnerships: Partnerships;
   player_career_stats: PlayerCareerStats;
   players: Players;

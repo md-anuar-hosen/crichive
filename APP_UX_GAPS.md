@@ -94,14 +94,27 @@ Manhattan/Worm/wagon wheel match the deliveries actually posted.
 
 ---
 
-## PHASE E — DLS (Duckworth-Lewis-Stern) — scope before starting
+## PHASE E — "CricHive Rain Rule" (done)
 
-Real DLS needs a resource-percentage table (overs remaining × wickets
-lost → % resource) and a par-score formula; there is no shortcut version
-that's actually correct. Needs a dedicated conversation on scope (e.g.
-official DLS tables are licensed — a from-scratch open resource table is
-a defensible substitute, but is itself a research task) before writing
-code.
+Official DLS tables are commercially licensed and can't be sourced or
+reproduced here. Built as CricHive's own resource-based target-revision
+method instead — explicitly and consistently labeled "CricHive Rain
+Rule", never "DLS"/"D/L", anywhere in code, API responses, or UI copy.
+
+- `backend/src/domain/rainRule/`: pure resource-percentage model
+  (`resourcePercent(oversRemaining, wicketsLost, totalOvers)`, normalised
+  per-format so any overs count works, not just 50) plus
+  `computeRevisedTarget`/`computeParScore` (simple resource-ratio
+  scaling — does not implement DLS's G50 average-score fallback for the
+  rare case the chasing side ends up with more resource; documented
+  simplification).
+- `match_interruptions` table (append-only stoppage log, like
+  `deliveries`) + `POST /matches/:id/innings/:n/interruption`
+  (organizer/scorer, gated on `tournament_rules.dls_enabled`) — shrinks
+  the innings' overs and, for innings 2+, overwrites its `target` in
+  place so existing CRR/RRR display code needed no changes.
+- Flutter: "Record rain interruption" scoring-menu action + an
+  interruption-history banner on the match screen.
 
 ---
 
@@ -114,4 +127,5 @@ code.
 - A match can be abandoned through the app and correctly shows as
   no-result in standings.
 - An organiser can edit tournament rules through the app.
-- DLS is explicitly out of scope until separately scoped.
+- A rain-affected chase gets a fair revised target via the CricHive Rain
+  Rule, clearly distinguished from licensed DLS everywhere it appears.

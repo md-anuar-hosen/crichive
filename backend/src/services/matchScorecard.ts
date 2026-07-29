@@ -52,7 +52,7 @@ export async function getMatchScorecard(matchId: string) {
 
   const innings = await Promise.all(
     inningsRows.map(async (inn) => {
-      const [totals, battingRows, bowlingRows, partnershipRows] = await Promise.all([
+      const [totals, battingRows, bowlingRows, partnershipRows, interruptionRows] = await Promise.all([
         db.selectFrom('innings_totals').selectAll().where('innings_id', '=', inn.id).executeTakeFirst(),
         db
           .selectFrom('batting_cards')
@@ -112,6 +112,12 @@ export async function getMatchScorecard(matchId: string) {
           .where('partnerships.innings_id', '=', inn.id)
           .orderBy('partnerships.wicket_number', 'asc')
           .execute(),
+        db
+          .selectFrom('match_interruptions')
+          .select(['id', 'overs_remaining_before', 'overs_remaining_after', 'wickets_lost_at', 'reason', 'created_at'])
+          .where('innings_id', '=', inn.id)
+          .orderBy('created_at', 'asc')
+          .execute(),
       ]);
 
       return {
@@ -150,6 +156,15 @@ export async function getMatchScorecard(matchId: string) {
           balls: p.balls,
           player_a: { id: p.player_a_id, name: p.player_a_display_name ?? p.player_a_full_name },
           player_b: { id: p.player_b_id, name: p.player_b_display_name ?? p.player_b_full_name },
+        })),
+        // "CricHive Rain Rule" interruption log for this innings — never label this DLS/D-L.
+        interruptions: interruptionRows.map((r) => ({
+          id: r.id,
+          overs_remaining_before: Number(r.overs_remaining_before),
+          overs_remaining_after: Number(r.overs_remaining_after),
+          wickets_lost_at: r.wickets_lost_at,
+          reason: r.reason,
+          created_at: r.created_at,
         })),
       };
     }),

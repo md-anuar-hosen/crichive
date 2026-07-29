@@ -62,6 +62,7 @@ export interface TournamentRules {
   pointsNoResult: number;
   pointsLoss: number;
   superOverOnTie: boolean;
+  dlsEnabled: boolean;
 }
 
 export interface BattingLine {
