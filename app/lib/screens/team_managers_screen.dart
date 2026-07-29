@@ -16,35 +16,60 @@ class TeamManagersScreen extends ConsumerWidget {
   SquadKey get _key => (teamId: teamId, tournamentSlug: tournamentSlug);
 
   Future<void> _grant(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController();
-    final email = await showDialog<String>(
+    final nameController = TextEditingController();
+    final emailController = TextEditingController();
+    final entry = await showDialog<(String, String)>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Add a team manager'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('They must already have a CricHive account.'),
+            const Text('They must already have a CricHive account. Enter both so you can confirm it\'s the right person.'),
             const SizedBox(height: 12),
             TextField(
-              controller: controller,
+              controller: nameController,
+              decoration: const InputDecoration(labelText: 'Their name'),
+              autofocus: true,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: emailController,
               decoration: const InputDecoration(labelText: 'Email address'),
               keyboardType: TextInputType.emailAddress,
-              autofocus: true,
             ),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()), child: const Text('Add')),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop((nameController.text.trim(), emailController.text.trim())),
+            child: const Text('Add'),
+          ),
         ],
       ),
     );
-    if (email == null || email.isEmpty) return;
+    if (entry == null) return;
+    final (expectedName, email) = entry;
+    if (email.isEmpty) return;
 
     try {
-      await ref.read(apiClientProvider).grantTeamManager(tournamentSlug, teamId, email: email);
+      final manager = await ref.read(apiClientProvider).grantTeamManager(tournamentSlug, teamId, email: email);
       ref.invalidate(teamManagersProvider(_key));
+      if (!context.mounted) return;
+
+      final nameMatches = expectedName.isEmpty || expectedName.toLowerCase() == manager.displayName.toLowerCase();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            nameMatches
+                ? 'Added ${manager.displayName} as team manager.'
+                : 'Added the account named "${manager.displayName}" for that email — '
+                    'you typed "$expectedName". Double-check this is the right person; revoke below if not.',
+          ),
+          duration: nameMatches ? const Duration(seconds: 4) : const Duration(seconds: 8),
+        ),
+      );
     } on ApiException catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));

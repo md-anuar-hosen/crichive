@@ -380,9 +380,12 @@ class ApiClient {
     return managers.cast<Map<String, dynamic>>().map(TeamManager.fromJson).toList();
   }
 
-  /// The invited person must already have a CricHive account.
-  Future<void> grantTeamManager(String tournamentSlug, String teamId, {required String email}) async {
-    await _dio.post('/tournaments/$tournamentSlug/teams/$teamId/managers', data: {'email': email});
+  /// The person must already have a CricHive account. Returns the matched
+  /// account so the caller can confirm it's the right person before it's
+  /// too late to catch a typo'd email.
+  Future<TeamManager> grantTeamManager(String tournamentSlug, String teamId, {required String email}) async {
+    final res = await _dio.post('/tournaments/$tournamentSlug/teams/$teamId/managers', data: {'email': email});
+    return TeamManager.fromJson((res.data as Map<String, dynamic>)['membership'] as Map<String, dynamic>);
   }
 
   Future<void> revokeTeamManager(String tournamentSlug, String teamId, String membershipId) async {
