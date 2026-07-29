@@ -159,6 +159,10 @@ class ApiClient {
     await _dio.post('/matches/$matchId/innings/$inningsNumber/close');
   }
 
+  Future<void> abandonMatch(String matchId, {required String reason}) async {
+    await _dio.post('/matches/$matchId/abandon', data: {'reason': reason});
+  }
+
   // ---------------------------------------------------------------------
   // GDPR data requests
   // ---------------------------------------------------------------------

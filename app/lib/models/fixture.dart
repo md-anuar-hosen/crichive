@@ -42,5 +42,5 @@ class Fixture {
       );
 
   bool get isLive => status == 'live' || status == 'innings_break' || status == 'toss_done';
-  bool get isCompleted => status == 'completed';
+  bool get isCompleted => status == 'completed' || status == 'abandoned' || status == 'cancelled' || status == 'forfeited';
 }

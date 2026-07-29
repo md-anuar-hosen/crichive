@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../api/api_exception.dart';
 import '../models/fall_of_wicket.dart';
 import '../models/match_detail.dart';
 import '../realtime/match_realtime_client.dart';
@@ -12,6 +13,8 @@ import 'match_charts_screen.dart';
 import 'playing_xi_screen.dart';
 import 'scoring_screen.dart';
 import 'toss_screen.dart';
+
+const _finishedStatuses = {'completed', 'abandoned', 'cancelled', 'forfeited'};
 
 class MatchScreen extends ConsumerStatefulWidget {
   const MatchScreen({super.key, required this.matchId});
@@ -42,6 +45,10 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
   }
 
   void _onScoringAction(BuildContext context, String action, MatchDetail match) {
+    if (action == 'abandon') {
+      _showAbandonDialog(context, match.id);
+      return;
+    }
     Widget screen;
     switch (action) {
       case 'toss':
@@ -66,6 +73,46 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
         return;
     }
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+
+  Future<void> _showAbandonDialog(BuildContext context, String matchId) async {
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Abandon match'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('This ends the match now as a no-result. This cannot be undone.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(labelText: 'Reason (e.g. rain)'),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('Abandon'),
+          ),
+        ],
+      ),
+    );
+    if (reason == null || reason.isEmpty || !mounted) return;
+
+    try {
+      await ref.read(apiClientProvider).abandonMatch(matchId, reason: reason);
+      ref.invalidate(matchProvider(matchId));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Match abandoned')));
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   @override
@@ -102,6 +149,11 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
                   PopupMenuItem(value: 'xi_a', child: Text('Playing XI — ${m.teamA.label}')),
                   PopupMenuItem(value: 'xi_b', child: Text('Playing XI — ${m.teamB.label}')),
                   const PopupMenuItem(value: 'score', child: Text('Score')),
+                  if (!_finishedStatuses.contains(m.status))
+                    const PopupMenuItem(
+                      value: 'abandon',
+                      child: Text('Abandon match', style: TextStyle(color: Colors.red)),
+                    ),
                 ],
               ),
             ) ??
