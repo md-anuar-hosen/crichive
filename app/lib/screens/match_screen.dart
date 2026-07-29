@@ -8,6 +8,7 @@ import '../state/auth_controller.dart';
 import '../state/providers.dart';
 import '../utils/cricket_math.dart';
 import '../widgets/async_value_view.dart';
+import 'match_charts_screen.dart';
 import 'playing_xi_screen.dart';
 import 'scoring_screen.dart';
 import 'toss_screen.dart';
@@ -85,6 +86,13 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
       appBar: AppBar(
         title: const Text('Match'),
         actions: [
+          IconButton(
+            tooltip: 'Charts & commentary',
+            icon: const Icon(Icons.bar_chart_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => MatchChartsScreen(matchId: widget.matchId)),
+            ),
+          ),
           if (isAuthed)
             match.whenOrNull(
               data: (m) => PopupMenuButton<String>(

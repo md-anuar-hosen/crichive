@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/api_client.dart';
+import '../models/delivery.dart';
 import '../models/fixture.dart';
 import '../models/live_match.dart';
 import '../models/match_detail.dart';
@@ -48,4 +49,10 @@ final liveMatchesProvider = FutureProvider<List<LiveMatch>>((ref) {
 
 final matchProvider = FutureProvider.family<MatchDetail, String>((ref, id) {
   return ref.watch(apiClientProvider).getMatch(id);
+});
+
+typedef DeliveriesKey = ({String matchId, int inningsNumber});
+
+final deliveriesProvider = FutureProvider.family<List<Delivery>, DeliveriesKey>((ref, key) {
+  return ref.watch(apiClientProvider).getDeliveries(key.matchId, key.inningsNumber);
 });

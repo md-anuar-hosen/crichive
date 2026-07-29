@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../models/delivery.dart';
 import '../models/delivery_result.dart';
 import '../models/fixture.dart';
 import '../models/live_match.dart';
@@ -246,6 +247,27 @@ class ApiClient {
   Future<MatchDetail> getMatch(String id) async {
     final res = await _dio.get('/matches/$id');
     return MatchDetail.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  /// Full ball-by-ball feed for one innings, transparently walking every
+  /// page (the server caps a single page at 100) so chart code always gets
+  /// the complete innings regardless of format length.
+  Future<List<Delivery>> getDeliveries(String matchId, int inningsNumber) async {
+    final all = <Delivery>[];
+    var page = 1;
+    while (true) {
+      final res = await _dio.get(
+        '/matches/$matchId/innings/$inningsNumber/deliveries',
+        queryParameters: {'page': page, 'limit': 100},
+      );
+      final body = res.data as Map<String, dynamic>;
+      final rows = (body['data'] as List).cast<Map<String, dynamic>>().map(Delivery.fromJson);
+      all.addAll(rows);
+      final pageInfo = body['pagination'] as Map<String, dynamic>;
+      if (page >= (pageInfo['total_pages'] as int)) break;
+      page++;
+    }
+    return all;
   }
 
   Future<List<LiveMatch>> getLiveMatches() async {
