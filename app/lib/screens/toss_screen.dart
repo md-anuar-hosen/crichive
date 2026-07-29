@@ -36,31 +36,27 @@ class _TossScreenState extends ConsumerState<TossScreen> {
               Text('${m.teamA.name} vs ${m.teamB.name}', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 24),
               Text('Toss winner', style: Theme.of(context).textTheme.labelLarge),
-              RadioListTile<String>(
-                title: Text(m.teamA.name),
-                value: m.teamA.id,
+              RadioGroup<String>(
                 groupValue: _winnerTeamId,
                 onChanged: (v) => setState(() => _winnerTeamId = v),
-              ),
-              RadioListTile<String>(
-                title: Text(m.teamB.name),
-                value: m.teamB.id,
-                groupValue: _winnerTeamId,
-                onChanged: (v) => setState(() => _winnerTeamId = v),
+                child: Column(
+                  children: [
+                    RadioListTile<String>(title: Text(m.teamA.name), value: m.teamA.id),
+                    RadioListTile<String>(title: Text(m.teamB.name), value: m.teamB.id),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               Text('Decision', style: Theme.of(context).textTheme.labelLarge),
-              RadioListTile<String>(
-                title: const Text('Bat'),
-                value: 'bat',
+              RadioGroup<String>(
                 groupValue: _decision,
                 onChanged: (v) => setState(() => _decision = v!),
-              ),
-              RadioListTile<String>(
-                title: const Text('Bowl'),
-                value: 'bowl',
-                groupValue: _decision,
-                onChanged: (v) => setState(() => _decision = v!),
+                child: const Column(
+                  children: [
+                    RadioListTile<String>(title: Text('Bat'), value: 'bat'),
+                    RadioListTile<String>(title: Text('Bowl'), value: 'bowl'),
+                  ],
+                ),
               ),
               const SizedBox(height: 24),
               FilledButton(
