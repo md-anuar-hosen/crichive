@@ -340,6 +340,78 @@ router.get('/matches/:id', async (req, res) => {
   res.json(scorecard);
 });
 
+// Ball-by-ball feed for a single innings: powers Manhattan/Worm/wagon-wheel
+// charts and a commentary list client-side. No player names here (only
+// IDs) -- the client already has names from the scorecard/squad it fetched
+// for this match, so nothing extra to strip for privacy.
+router.get('/matches/:id/innings/:n/deliveries', async (req, res) => {
+  const match = await db.selectFrom('matches').select('id').where('id', '=', req.params.id).executeTakeFirst();
+  if (!match) {
+    res.status(404).json({ error: 'Match not found' });
+    return;
+  }
+
+  const inningsNumber = Number.parseInt(req.params.n, 10);
+  if (!Number.isInteger(inningsNumber) || inningsNumber < 1) {
+    res.status(400).json({ error: 'Invalid innings number' });
+    return;
+  }
+
+  const innings = await db
+    .selectFrom('innings')
+    .select('id')
+    .where('match_id', '=', match.id)
+    .where('innings_number', '=', inningsNumber)
+    .executeTakeFirst();
+  if (!innings) {
+    res.status(404).json({ error: `Innings ${inningsNumber} not found for this match` });
+    return;
+  }
+
+  const pagination = parsePagination(req.query);
+
+  const [rows, countRow] = await Promise.all([
+    db
+      .selectFrom('deliveries')
+      .select([
+        'over_number',
+        'ball_in_over',
+        'sequence',
+        'striker_id',
+        'non_striker_id',
+        'bowler_id',
+        'runs_off_bat',
+        'extra_wides',
+        'extra_noballs',
+        'extra_byes',
+        'extra_legbyes',
+        'extra_penalty',
+        'is_legal_delivery',
+        'is_free_hit',
+        'wicket_kind',
+        'player_out_id',
+        'fielder_id',
+        'wagon_angle_deg',
+        'wagon_distance',
+        'commentary',
+      ])
+      .where('innings_id', '=', innings.id)
+      .where('voided_at', 'is', null)
+      .orderBy('sequence', 'asc')
+      .limit(pagination.limit)
+      .offset(pagination.offset)
+      .execute(),
+    db
+      .selectFrom('deliveries')
+      .select((eb) => eb.fn.countAll<string>().as('count'))
+      .where('innings_id', '=', innings.id)
+      .where('voided_at', 'is', null)
+      .executeTakeFirstOrThrow(),
+  ]);
+
+  res.json(paginated(rows, pagination, Number(countRow.count)));
+});
+
 router.get('/live', async (_req, res) => {
   const rows = await db
     .selectFrom('matches')
