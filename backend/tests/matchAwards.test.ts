@@ -61,10 +61,10 @@ describe('Match/tournament awards (dismissal text, Player of the Match/Tournamen
     await db
       .insertInto('team_squads')
       .values([
-        { tournament_id: tournamentId, team_id: teamAId, player_id: p1 },
-        { tournament_id: tournamentId, team_id: teamAId, player_id: p2 },
-        { tournament_id: tournamentId, team_id: teamBId, player_id: p3 },
-        { tournament_id: tournamentId, team_id: teamBId, player_id: p4 },
+        { tournament_id: tournamentId, team_id: teamAId, player_id: p1, approved_at: new Date() },
+        { tournament_id: tournamentId, team_id: teamAId, player_id: p2, approved_at: new Date() },
+        { tournament_id: tournamentId, team_id: teamBId, player_id: p3, approved_at: new Date() },
+        { tournament_id: tournamentId, team_id: teamBId, player_id: p4, approved_at: new Date() },
       ])
       .execute();
 

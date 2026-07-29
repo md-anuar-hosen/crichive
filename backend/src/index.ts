@@ -9,6 +9,7 @@ import authRouter from './routes/auth';
 import publicRouter from './routes/public';
 import scoringRouter from './routes/scoring';
 import dataRequestsRouter from './routes/dataRequests';
+import squadsRouter from './routes/squads';
 import { attachRealtimeServer } from './realtime/server';
 import { requestLogging } from './middleware/requestLogging';
 
@@ -54,6 +55,7 @@ app.use('/auth', publicRateLimit, authRouter);
 app.use(scoringRateLimit, scoringRouter);
 app.use(publicRateLimit, publicRouter);
 app.use(publicRateLimit, dataRequestsRouter);
+app.use(publicRateLimit, squadsRouter);
 
 if (process.env.NODE_ENV !== 'test') {
   const port = process.env.PORT ?? 3000;

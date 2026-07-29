@@ -163,7 +163,7 @@ router.post('/matches/:id/playing-xi', requireAuth, requireMatchRole('organizer'
 
   const squadRows = await db
     .selectFrom('team_squads')
-    .select('player_id')
+    .select(['player_id', 'approved_at'])
     .where('tournament_id', '=', match.tournament_id)
     .where('team_id', '=', team_id)
     .where('player_id', 'in', player_ids)
@@ -173,6 +173,14 @@ router.post('/matches/:id/playing-xi', requireAuth, requireMatchRole('organizer'
   const missing = player_ids.filter((id) => !squadPlayerIds.has(id));
   if (missing.length) {
     res.status(400).json({ error: 'Some players are not in this team\'s squad for this tournament', player_ids: missing });
+    return;
+  }
+
+  // A team_manager's squad proposal isn't final until the organizer approves
+  // it — an unapproved player can't be picked for a playing XI.
+  const unapproved = squadRows.filter((r) => r.approved_at === null).map((r) => r.player_id);
+  if (unapproved.length) {
+    res.status(400).json({ error: 'Some players are not yet organiser-approved for this squad', player_ids: unapproved });
     return;
   }
 

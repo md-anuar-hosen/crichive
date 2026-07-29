@@ -428,6 +428,8 @@ router.get('/teams/:id/squad/:tournamentSlug', async (req, res) => {
       'team_squads.jersey_number',
       'team_squads.is_captain',
       'team_squads.is_keeper',
+      'team_squads.approved_at',
+      'team_squads.licence_verified',
     ])
     .where('team_squads.team_id', '=', team.id)
     .where('team_squads.tournament_id', '=', tournament.id)
@@ -440,8 +442,31 @@ router.get('/teams/:id/squad/:tournamentSlug', async (req, res) => {
       jersey_number: r.jersey_number,
       is_captain: r.is_captain,
       is_keeper: r.is_keeper,
+      is_approved: r.approved_at !== null,
+      licence_verified: r.licence_verified,
     })),
   });
+});
+
+// Registered before /players/:id — otherwise Express would match "search" as an :id.
+router.get('/players/search', async (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (q.length < 2) {
+    res.json({ data: [] });
+    return;
+  }
+
+  const rows = await db
+    .selectFrom('players')
+    .select(['id', 'full_name', 'display_name', 'batting', 'bowling', 'photo_url'])
+    .where('deleted_at', 'is', null)
+    .where('merged_into_id', 'is', null)
+    .where('full_name', 'ilike', `%${q}%`)
+    .orderBy('full_name', 'asc')
+    .limit(20)
+    .execute();
+
+  res.json({ data: rows.map(serializePlayer) });
 });
 
 router.get('/players/:id', async (req, res) => {
