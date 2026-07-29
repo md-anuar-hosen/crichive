@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/fall_of_wicket.dart';
 import '../models/match_detail.dart';
 import '../realtime/match_realtime_client.dart';
 import '../state/auth_controller.dart';
 import '../state/providers.dart';
+import '../utils/cricket_math.dart';
 import '../widgets/async_value_view.dart';
 import 'playing_xi_screen.dart';
 import 'scoring_screen.dart';
@@ -71,6 +73,14 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     match.whenData(_ensureRealtimeFor);
     final isAuthed = ref.watch(authControllerProvider).status == AuthStatus.authenticated;
 
+    // players_per_side/balls_per_over come from tournament_rules, not
+    // hardcoded — see CLAUDE.md. Defaults only cover the brief window
+    // before the tournament fetch resolves.
+    final ballsPerOver = match.whenOrNull(
+          data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules?.ballsPerOver,
+        ) ??
+        6;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Match'),
@@ -97,7 +107,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
         child: AsyncValueView(
           value: match,
           onRetry: () => ref.invalidate(matchProvider(widget.matchId)),
-          data: (context, m) => _MatchBody(match: m),
+          data: (context, m) => _MatchBody(match: m, ballsPerOver: ballsPerOver),
         ),
       ),
     );
@@ -105,8 +115,9 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
 }
 
 class _MatchBody extends StatelessWidget {
-  const _MatchBody({required this.match});
+  const _MatchBody({required this.match, required this.ballsPerOver});
   final MatchDetail match;
+  final int ballsPerOver;
 
   @override
   Widget build(BuildContext context) {
@@ -117,6 +128,10 @@ class _MatchBody extends StatelessWidget {
         Text('${match.teamA.name} vs ${match.teamB.name}', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 4),
         Text(_headerSubtitle(), style: Theme.of(context).textTheme.bodyMedium),
+        if (_tossLine() != null) ...[
+          const SizedBox(height: 4),
+          Text(_tossLine()!, style: Theme.of(context).textTheme.bodySmall),
+        ],
         if (match.resultNote != null) ...[
           const SizedBox(height: 8),
           Text(
@@ -126,7 +141,7 @@ class _MatchBody extends StatelessWidget {
         ],
         const SizedBox(height: 16),
         if (match.innings.isEmpty) const EmptyState(message: 'Play has not started yet.'),
-        for (final innings in match.innings) _InningsCard(match: match, innings: innings),
+        for (final innings in match.innings) _InningsCard(match: match, innings: innings, ballsPerOver: ballsPerOver),
       ],
     );
   }
@@ -135,12 +150,19 @@ class _MatchBody extends StatelessWidget {
     if (match.ground == null) return match.status;
     return '${match.ground!.name}${match.ground!.city != null ? ', ${match.ground!.city}' : ''}';
   }
+
+  String? _tossLine() {
+    if (match.tossWinnerId == null || match.tossDecision == null) return null;
+    final winner = match.tossWinnerId == match.teamA.id ? match.teamA.label : match.teamB.label;
+    return '$winner won the toss, elected to ${match.tossDecision}';
+  }
 }
 
 class _InningsCard extends StatelessWidget {
-  const _InningsCard({required this.match, required this.innings});
+  const _InningsCard({required this.match, required this.innings, required this.ballsPerOver});
   final MatchDetail match;
   final InningsDetail innings;
+  final int ballsPerOver;
 
   String _teamName(String teamId) {
     if (teamId == match.teamA.id) return match.teamA.label;
@@ -151,6 +173,8 @@ class _InningsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totals = innings.totals;
+    final isOpen = innings.closedAt == null;
+    final fallOfWickets = computeFallOfWickets(innings, ballsPerOver);
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
@@ -167,12 +191,12 @@ class _InningsCard extends StatelessWidget {
                 ),
                 if (totals != null)
                   Text(
-                    '${totals.runs}/${totals.wickets} (${totals.oversDisplay})',
+                    '${totals.runs}/${totals.wickets} (${totals.oversDisplay(ballsPerOver)})',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
               ],
             ),
-            if (innings.target != null) Text('Target: ${innings.target}', style: Theme.of(context).textTheme.bodySmall),
+            if (totals != null) ..._buildRateLines(context, totals, isOpen),
             const SizedBox(height: 12),
             if (innings.batting.isNotEmpty) ...[
               Text('Batting', style: Theme.of(context).textTheme.labelLarge),
@@ -219,13 +243,24 @@ class _InningsCard extends StatelessWidget {
                       Expanded(
                         flex: 5,
                         child: Text(
-                          '${b.oversDisplay}-${b.maidens}-${b.runsConceded}-${b.wickets}',
+                          '${b.oversDisplay(ballsPerOver)}-${b.maidens}-${b.runsConceded}-${b.wickets}',
                           textAlign: TextAlign.end,
                         ),
                       ),
                     ],
                   ),
                 ),
+              ),
+            ],
+            if (fallOfWickets.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('Fall of wickets', style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 4),
+              Text(
+                fallOfWickets
+                    .map((w) => '${w.score}-${w.wicketNumber}${w.batterName != null ? ' (${w.batterName})' : ''}')
+                    .join(', '),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
             if (innings.partnerships.isNotEmpty) ...[
@@ -243,5 +278,42 @@ class _InningsCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildRateLines(BuildContext context, InningsTotals totals, bool isOpen) {
+    final style = Theme.of(context).textTheme.bodySmall;
+    final crr = runRate(totals.runs, totals.legalBalls, ballsPerOver);
+    final lines = <Widget>[Text('CRR ${crr.toStringAsFixed(2)}', style: style)];
+
+    if (innings.target != null) {
+      if (isOpen) {
+        final rrr = requiredRunRate(
+          target: innings.target!,
+          runsSoFar: totals.runs,
+          legalBallsBowled: totals.legalBalls,
+          maxOvers: innings.maxOvers,
+          ballsPerOver: ballsPerOver,
+        );
+        final remaining = ballsRemaining(
+          maxOvers: innings.maxOvers,
+          ballsPerOver: ballsPerOver,
+          legalBallsBowled: totals.legalBalls,
+        );
+        final runsNeeded = innings.target! - totals.runs;
+        if (rrr != null && runsNeeded > 0) {
+          lines.add(Text('RRR ${rrr.toStringAsFixed(2)} · need $runsNeeded off $remaining balls', style: style));
+        }
+      }
+    } else if (isOpen) {
+      final projected = projectedScore(
+        runsSoFar: totals.runs,
+        legalBallsBowled: totals.legalBalls,
+        maxOvers: innings.maxOvers,
+        ballsPerOver: ballsPerOver,
+      );
+      lines.add(Text('Projected $projected', style: style));
+    }
+
+    return lines;
   }
 }

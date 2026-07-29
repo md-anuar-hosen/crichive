@@ -1,3 +1,4 @@
+import '../utils/cricket_math.dart';
 import 'json_utils.dart';
 import 'team.dart';
 
@@ -16,7 +17,7 @@ class InningsTotals {
         extras: json['extras'] as int,
       );
 
-  String get oversDisplay => '${legalBalls ~/ 6}.${legalBalls % 6}';
+  String oversDisplay(int ballsPerOver) => formatOvers(legalBalls, ballsPerOver);
 }
 
 class BattingCardRow {
@@ -89,8 +90,8 @@ class BowlingCardRow {
         noballs: json['noballs'] as int,
       );
 
-  String get oversDisplay => '${legalBalls ~/ 6}.${legalBalls % 6}';
-  double get economy => legalBalls == 0 ? 0 : runsConceded / (legalBalls / 6);
+  String oversDisplay(int ballsPerOver) => formatOvers(legalBalls, ballsPerOver);
+  double economy(int ballsPerOver) => runRate(runsConceded, legalBalls, ballsPerOver);
 }
 
 class PartnershipPlayerRef {

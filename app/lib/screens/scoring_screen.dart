@@ -5,6 +5,7 @@ import '../api/api_exception.dart';
 import '../models/match_detail.dart';
 import '../models/player.dart';
 import '../state/providers.dart';
+import '../utils/cricket_math.dart';
 import '../utils/uuid.dart';
 import '../widgets/async_value_view.dart';
 
@@ -51,6 +52,10 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
   @override
   Widget build(BuildContext context) {
     final match = ref.watch(matchProvider(widget.matchId));
+    final ballsPerOver = match.whenOrNull(
+          data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules?.ballsPerOver,
+        ) ??
+        6;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Score')),
@@ -76,7 +81,7 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
             value: battingSquad,
             data: (context, batting) => AsyncValueView(
               value: bowlingSquad,
-              data: (context, bowling) => _buildForm(context, m, innings, batting, bowling),
+              data: (context, bowling) => _buildForm(context, m, innings, batting, bowling, ballsPerOver),
             ),
           );
         },
@@ -90,16 +95,18 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
     InningsDetail innings,
     List<SquadPlayer> battingSquad,
     List<SquadPlayer> bowlingSquad,
+    int ballsPerOver,
   ) {
     final totals = innings.totals;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         Text(
-          totals == null ? '0/0 (0.0)' : '${totals.runs}/${totals.wickets} (${totals.oversDisplay})',
+          totals == null ? '0/0 (0.0)' : '${totals.runs}/${totals.wickets} (${totals.oversDisplay(ballsPerOver)})',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
         Text('Innings ${innings.inningsNumber}', style: Theme.of(context).textTheme.bodySmall),
+        if (totals != null) _RateLine(innings: innings, totals: totals, ballsPerOver: ballsPerOver),
         const SizedBox(height: 16),
         Row(
           children: [
@@ -283,6 +290,38 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+}
+
+class _RateLine extends StatelessWidget {
+  const _RateLine({required this.innings, required this.totals, required this.ballsPerOver});
+
+  final InningsDetail innings;
+  final InningsTotals totals;
+  final int ballsPerOver;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall;
+    final crr = runRate(totals.runs, totals.legalBalls, ballsPerOver);
+    final parts = ['CRR ${crr.toStringAsFixed(2)}'];
+
+    if (innings.target != null) {
+      final rrr = requiredRunRate(
+        target: innings.target!,
+        runsSoFar: totals.runs,
+        legalBallsBowled: totals.legalBalls,
+        maxOvers: innings.maxOvers,
+        ballsPerOver: ballsPerOver,
+      );
+      final runsNeeded = innings.target! - totals.runs;
+      final remaining = ballsRemaining(maxOvers: innings.maxOvers, ballsPerOver: ballsPerOver, legalBallsBowled: totals.legalBalls);
+      if (rrr != null && runsNeeded > 0) {
+        parts.add('RRR ${rrr.toStringAsFixed(2)} · need $runsNeeded off $remaining');
+      }
+    }
+
+    return Text(parts.join(' · '), style: style);
   }
 }
 
