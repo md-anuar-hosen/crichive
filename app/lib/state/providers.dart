@@ -6,6 +6,7 @@ import '../models/fixture.dart';
 import '../models/live_match.dart';
 import '../models/match_detail.dart';
 import '../models/pagination.dart';
+import '../models/platform.dart';
 import '../models/player.dart';
 import '../models/standing.dart';
 import '../models/team.dart';
@@ -20,6 +21,14 @@ final tournamentsProvider = FutureProvider<Paginated<Tournament>>((ref) {
 
 final tournamentProvider = FutureProvider.family<Tournament, String>((ref, slug) {
   return ref.watch(apiClientProvider).getTournament(slug);
+});
+
+final platformSettingsProvider = FutureProvider<PlatformSettings>((ref) {
+  return ref.watch(apiClientProvider).getPlatformSettings();
+});
+
+final pendingTournamentsProvider = FutureProvider<List<PendingTournament>>((ref) {
+  return ref.watch(apiClientProvider).getPendingTournaments();
 });
 
 final teamsProvider = FutureProvider.family<Paginated<Team>, String>((ref, slug) {

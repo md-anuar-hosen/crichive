@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../state/auth_controller.dart';
 import '../state/providers.dart';
 import '../widgets/async_value_view.dart';
+import 'create_tournament_screen.dart';
 
 class TournamentListScreen extends ConsumerWidget {
   const TournamentListScreen({super.key});
@@ -12,9 +14,22 @@ class TournamentListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tournaments = ref.watch(tournamentsProvider);
+    final isAuthed = ref.watch(authControllerProvider).status == AuthStatus.authenticated;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Tournaments')),
+      appBar: AppBar(
+        title: const Text('Tournaments'),
+        actions: [
+          if (isAuthed)
+            IconButton(
+              tooltip: 'Create tournament',
+              icon: const Icon(Icons.add),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CreateTournamentScreen()),
+              ),
+            ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           final _ = await ref.refresh(tournamentsProvider.future);

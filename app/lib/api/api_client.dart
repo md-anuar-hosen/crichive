@@ -6,6 +6,7 @@ import '../models/fixture.dart';
 import '../models/live_match.dart';
 import '../models/match_detail.dart';
 import '../models/pagination.dart';
+import '../models/platform.dart';
 import '../models/player.dart';
 import '../models/standing.dart';
 import '../models/team.dart';
@@ -216,6 +217,51 @@ class ApiClient {
   Future<Tournament> getTournament(String slug) async {
     final res = await _dio.get('/tournaments/$slug');
     return Tournament.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  /// Creates a tournament; the caller becomes its organizer immediately.
+  /// Whether it's publicly visible right away or waits for platform-admin
+  /// approval depends on the current [PlatformSettings.organizerSignupMode].
+  Future<Tournament> createTournament({
+    required String name,
+    required String slug,
+    required int seasonYear,
+    required int oversPerInnings,
+    required int maxOversPerBowler,
+    String? organizerOrg,
+  }) async {
+    final res = await _dio.post(
+      '/tournaments',
+      data: {
+        'name': name,
+        'slug': slug,
+        'season_year': seasonYear,
+        'overs_per_innings': oversPerInnings,
+        'max_overs_per_bowler': maxOversPerBowler,
+        'organizer_org': ?organizerOrg,
+      },
+    );
+    return Tournament.fromJson((res.data as Map<String, dynamic>)['tournament'] as Map<String, dynamic>);
+  }
+
+  Future<PlatformSettings> getPlatformSettings() async {
+    final res = await _dio.get('/platform/settings');
+    return PlatformSettings.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<PlatformSettings> updatePlatformSettings({required String organizerSignupMode}) async {
+    final res = await _dio.patch('/platform/settings', data: {'organizer_signup_mode': organizerSignupMode});
+    return PlatformSettings.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<List<PendingTournament>> getPendingTournaments() async {
+    final res = await _dio.get('/tournaments/pending');
+    final list = (res.data as Map<String, dynamic>)['tournaments'] as List;
+    return list.cast<Map<String, dynamic>>().map(PendingTournament.fromJson).toList();
+  }
+
+  Future<void> approveTournament(String slug) async {
+    await _dio.post('/tournaments/$slug/approve');
   }
 
   Future<Paginated<Team>> getTeams(String slug, {int page = 1, int limit = 50}) async {

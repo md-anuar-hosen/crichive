@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../state/auth_controller.dart';
 import 'data_request_screen.dart';
+import 'platform_admin_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -59,6 +60,16 @@ class _SignedInView extends ConsumerWidget {
           Text(user.displayName, style: Theme.of(context).textTheme.titleLarge),
           Text(user.email, style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 24),
+          if (user.isPlatformAdmin) ...[
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PlatformAdminScreen()),
+              ),
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              label: const Text('Platform admin'),
+            ),
+            const SizedBox(height: 8),
+          ],
           OutlinedButton.icon(
             onPressed: () => ref.read(authControllerProvider.notifier).logout(),
             icon: const Icon(Icons.logout),

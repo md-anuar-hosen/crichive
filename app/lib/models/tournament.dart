@@ -65,6 +65,7 @@ class Tournament {
     this.endsOn,
     this.logoUrl,
     this.rules,
+    this.isApproved = true,
   });
 
   final String id;
@@ -79,6 +80,10 @@ class Tournament {
   final String? logoUrl;
   final TournamentRules? rules;
 
+  /// False while awaiting platform-admin approval (see PlatformSettings —
+  /// only meaningful when organizer_signup_mode is 'approval_required').
+  final bool isApproved;
+
   factory Tournament.fromJson(Map<String, dynamic> json) => Tournament(
         id: json['id'] as String,
         name: json['name'] as String,
@@ -91,5 +96,6 @@ class Tournament {
         endsOn: json['ends_on'] == null ? null : DateTime.parse(json['ends_on'] as String),
         logoUrl: json['logo_url'] as String?,
         rules: json['rules'] == null ? null : TournamentRules.fromJson(json['rules'] as Map<String, dynamic>),
+        isApproved: json['is_approved'] as bool? ?? true,
       );
 }
