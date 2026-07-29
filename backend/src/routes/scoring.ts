@@ -526,6 +526,12 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
     await db.transaction().execute(async (trx) => {
       await trx.updateTable('innings').set({ closed_at: new Date() }).where('id', '=', innings.id).execute();
 
+      const firstInningsTotals = await trx
+        .selectFrom('innings_totals')
+        .select('runs')
+        .where('innings_id', '=', innings.id)
+        .executeTakeFirst();
+
       await trx
         .insertInto('innings')
         .values({
@@ -535,6 +541,7 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
           batting_team_id: innings.bowling_team_id,
           bowling_team_id: innings.batting_team_id,
           max_overs: match.overs_override ?? rules.oversPerInnings,
+          target: (firstInningsTotals?.runs ?? 0) + 1,
         })
         .execute();
 
