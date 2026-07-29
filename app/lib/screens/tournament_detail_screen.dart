@@ -20,7 +20,7 @@ class TournamentDetailScreen extends ConsumerWidget {
     final isAuthed = ref.watch(authControllerProvider).status == AuthStatus.authenticated;
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: Text(
@@ -38,7 +38,7 @@ class TournamentDetailScreen extends ConsumerWidget {
               ),
           ],
           bottom: const TabBar(
-            tabs: [Tab(text: 'Fixtures'), Tab(text: 'Teams'), Tab(text: 'Standings')],
+            tabs: [Tab(text: 'Fixtures'), Tab(text: 'Teams'), Tab(text: 'Standings'), Tab(text: 'Awards')],
           ),
         ),
         body: TabBarView(
@@ -46,6 +46,7 @@ class TournamentDetailScreen extends ConsumerWidget {
             _FixturesTab(slug: slug),
             _TeamsTab(slug: slug),
             _StandingsTab(slug: slug),
+            _AwardsTab(slug: slug),
           ],
         ),
       ),
@@ -203,6 +204,74 @@ class _StandingsTab extends ConsumerWidget {
               ),
             );
           },
+        );
+      },
+    );
+  }
+}
+
+class _AwardsTab extends ConsumerWidget {
+  const _AwardsTab({required this.slug});
+  final String slug;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final awards = ref.watch(awardsProvider(slug));
+    return AsyncValueView(
+      value: awards,
+      onRetry: () => ref.invalidate(awardsProvider(slug)),
+      data: (context, a) {
+        if (a.playerOfTournament == null && a.mostRuns.isEmpty && a.mostWickets.isEmpty) {
+          return const EmptyState(message: 'Awards will appear once matches are completed.');
+        }
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (a.playerOfTournament != null) ...[
+              Card(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                child: ListTile(
+                  leading: Icon(Icons.emoji_events, color: Theme.of(context).colorScheme.onPrimaryContainer),
+                  title: Text(
+                    a.playerOfTournament!.name ?? 'Unknown player',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    'Player of the Tournament',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            if (a.mostRuns.isNotEmpty) ...[
+              Text('Most runs', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              ...a.mostRuns.map(
+                (r) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(r.name ?? 'Unknown player'),
+                  subtitle: Text('${r.fours} fours · ${r.sixes} sixes'),
+                  trailing: Text('${r.runs}', style: Theme.of(context).textTheme.titleMedium),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            if (a.mostWickets.isNotEmpty) ...[
+              Text('Most wickets', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              ...a.mostWickets.map(
+                (w) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(w.name ?? 'Unknown player'),
+                  subtitle: Text('${w.maidens} maidens'),
+                  trailing: Text('${w.wickets}', style: Theme.of(context).textTheme.titleMedium),
+                ),
+              ),
+            ],
+          ],
         );
       },
     );

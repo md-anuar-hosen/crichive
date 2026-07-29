@@ -278,6 +278,10 @@ class _MatchBody extends StatelessWidget {
             style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary),
           ),
         ],
+        if (match.playerOfMatch != null) ...[
+          const SizedBox(height: 4),
+          Text('Player of the match: ${match.playerOfMatch!.name}', style: Theme.of(context).textTheme.bodySmall),
+        ],
         const SizedBox(height: 16),
         if (match.innings.isEmpty) const EmptyState(message: 'Play has not started yet.'),
         for (final innings in match.innings) _InningsCard(match: match, innings: innings, ballsPerOver: ballsPerOver),

@@ -221,7 +221,7 @@ class MatchDetail {
     this.resultNote,
     this.winMarginRuns,
     this.winMarginWickets,
-    this.playerOfMatchId,
+    this.playerOfMatch,
     required this.teamA,
     required this.teamB,
     this.ground,
@@ -241,7 +241,7 @@ class MatchDetail {
   final String? resultNote;
   final int? winMarginRuns;
   final int? winMarginWickets;
-  final String? playerOfMatchId;
+  final PartnershipPlayerRef? playerOfMatch;
   final TeamRef teamA;
   final TeamRef teamB;
   final GroundRef? ground;
@@ -261,7 +261,9 @@ class MatchDetail {
         resultNote: json['result_note'] as String?,
         winMarginRuns: json['win_margin_runs'] as int?,
         winMarginWickets: json['win_margin_wickets'] as int?,
-        playerOfMatchId: json['player_of_match_id'] as String?,
+        playerOfMatch: json['player_of_match'] == null
+            ? null
+            : PartnershipPlayerRef.fromJson(json['player_of_match'] as Map<String, dynamic>),
         teamA: TeamRef.fromJson(json['team_a'] as Map<String, dynamic>),
         teamB: TeamRef.fromJson(json['team_b'] as Map<String, dynamic>),
         ground: json['ground'] == null ? null : GroundRef.fromJson(json['ground'] as Map<String, dynamic>),

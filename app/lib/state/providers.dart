@@ -10,6 +10,7 @@ import '../models/player.dart';
 import '../models/standing.dart';
 import '../models/team.dart';
 import '../models/tournament.dart';
+import '../models/tournament_awards.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 
@@ -31,6 +32,10 @@ final fixturesProvider = FutureProvider.family<Paginated<Fixture>, String>((ref,
 
 final standingsProvider = FutureProvider.family<List<StandingGroup>, String>((ref, slug) {
   return ref.watch(apiClientProvider).getStandings(slug);
+});
+
+final awardsProvider = FutureProvider.family<TournamentAwards, String>((ref, slug) {
+  return ref.watch(apiClientProvider).getTournamentAwards(slug);
 });
 
 typedef SquadKey = ({String teamId, String tournamentSlug});

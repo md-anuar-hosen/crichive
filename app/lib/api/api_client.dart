@@ -10,6 +10,7 @@ import '../models/player.dart';
 import '../models/standing.dart';
 import '../models/team.dart';
 import '../models/tournament.dart';
+import '../models/tournament_awards.dart';
 import '../models/user.dart';
 import 'api_exception.dart';
 
@@ -249,6 +250,11 @@ class ApiClient {
     final res = await _dio.get('/tournaments/$slug/standings');
     final groups = (res.data as Map<String, dynamic>)['groups'] as List;
     return groups.cast<Map<String, dynamic>>().map(StandingGroup.fromJson).toList();
+  }
+
+  Future<TournamentAwards> getTournamentAwards(String slug) async {
+    final res = await _dio.get('/tournaments/$slug/awards');
+    return TournamentAwards.fromJson(res.data as Map<String, dynamic>);
   }
 
   Future<Team> getTeam(String id) async {
