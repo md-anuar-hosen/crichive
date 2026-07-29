@@ -646,6 +646,66 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
 });
 
 // ---------------------------------------------------------------------------
+// POST /matches/:id/abandon
+// ---------------------------------------------------------------------------
+
+const abandonSchema = z.object({ reason: z.string().trim().min(1) });
+
+router.post('/matches/:id/abandon', requireAuth, requireMatchRole('organizer', 'scorer'), async (req, res) => {
+  const match = await loadMatch(param(req.params.id));
+  if (!match) {
+    res.status(404).json({ error: 'Match not found' });
+    return;
+  }
+  if (['completed', 'abandoned', 'cancelled', 'forfeited'].includes(match.status)) {
+    res.status(409).json({ error: `Match already finished (status: ${match.status})` });
+    return;
+  }
+
+  const parsed = abandonSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Validation failed', fields: zodFieldErrors(parsed.error) });
+    return;
+  }
+
+  await db.transaction().execute(async (trx) => {
+    await trx
+      .updateTable('matches')
+      .set({
+        status: 'abandoned',
+        result: 'abandoned',
+        result_note: parsed.data.reason,
+        updated_at: new Date(),
+      })
+      .where('id', '=', match.id)
+      .execute();
+
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'match',
+      entityId: match.id,
+      action: 'abandon',
+      afterState: { reason: parsed.data.reason },
+      reason: parsed.data.reason,
+    });
+  });
+
+  // Same derived-table refresh as a normal completion: an abandoned match
+  // still counts for no-result points (see standingsService.ts), and any
+  // runs/wickets that happened before the interruption are still real
+  // cricket that occurred.
+  if (match.group_id) {
+    await recomputeGroupStandings(match.group_id);
+  }
+  const matchPlayers = await db.selectFrom('match_players').select('player_id').where('match_id', '=', match.id).execute();
+  if (matchPlayers.length) {
+    await recomputePlayerCareerStats(matchPlayers.map((p) => p.player_id));
+  }
+
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
 // GET /matches/:id/scorecard
 // ---------------------------------------------------------------------------
 

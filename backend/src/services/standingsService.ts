@@ -35,7 +35,7 @@ export async function recomputeGroupStandings(groupId: string): Promise<void> {
     .selectFrom('matches')
     .select(['id', 'tournament_id', 'team_a_id', 'team_b_id', 'result', 'winner_team_id', 'overs_override', 'status'])
     .where('group_id', '=', groupId)
-    .where('status', '=', 'completed')
+    .where('status', 'in', ['completed', 'abandoned'])
     .execute();
 
   if (matches.length === 0) {
