@@ -268,6 +268,87 @@ class ApiClient {
     return squad.cast<Map<String, dynamic>>().map(SquadPlayer.fromJson).toList();
   }
 
+  /// Same shape as [getSquad] but includes pending (not-yet-approved)
+  /// entries too — only visible to the tournament's organiser or that
+  /// team's own manager.
+  Future<List<SquadPlayer>> getManagedSquad(String tournamentSlug, String teamId) async {
+    final res = await _dio.get('/tournaments/$tournamentSlug/teams/$teamId/squad/manage');
+    final squad = (res.data as Map<String, dynamic>)['squad'] as List;
+    return squad.cast<Map<String, dynamic>>().map(SquadPlayer.fromJson).toList();
+  }
+
+  /// Organiser adding a player is approved immediately; a team manager's
+  /// addition is a proposal that sits pending until the organiser approves it.
+  Future<void> addSquadPlayer(
+    String tournamentSlug,
+    String teamId, {
+    required String playerId,
+    int? jerseyNumber,
+    bool? isCaptain,
+    bool? isKeeper,
+  }) async {
+    await _dio.post(
+      '/tournaments/$tournamentSlug/teams/$teamId/squad',
+      data: {
+        'player_id': playerId,
+        'jersey_number': ?jerseyNumber,
+        'is_captain': ?isCaptain,
+        'is_keeper': ?isKeeper,
+      },
+    );
+  }
+
+  /// Editing an already-approved entry as a team manager reopens it for
+  /// organiser review — the server, not the client, decides that.
+  Future<void> editSquadPlayer(
+    String tournamentSlug,
+    String teamId,
+    String playerId, {
+    int? jerseyNumber,
+    bool? isCaptain,
+    bool? isKeeper,
+  }) async {
+    await _dio.patch(
+      '/tournaments/$tournamentSlug/teams/$teamId/squad/$playerId',
+      data: {
+        'jersey_number': ?jerseyNumber,
+        'is_captain': ?isCaptain,
+        'is_keeper': ?isKeeper,
+      },
+    );
+  }
+
+  Future<void> removeSquadPlayer(String tournamentSlug, String teamId, String playerId) async {
+    await _dio.delete('/tournaments/$tournamentSlug/teams/$teamId/squad/$playerId');
+  }
+
+  /// Organiser-only: confirms the squad placement and records the manual
+  /// Suomisport licence check in the same step.
+  Future<void> approveSquadPlayer(String tournamentSlug, String teamId, String playerId, {required bool licenceVerified}) async {
+    await _dio.post('/tournaments/$tournamentSlug/teams/$teamId/squad/$playerId/approve', data: {'licence_verified': licenceVerified});
+  }
+
+  Future<List<TeamManager>> getTeamManagers(String tournamentSlug, String teamId) async {
+    final res = await _dio.get('/tournaments/$tournamentSlug/teams/$teamId/managers');
+    final managers = (res.data as Map<String, dynamic>)['managers'] as List;
+    return managers.cast<Map<String, dynamic>>().map(TeamManager.fromJson).toList();
+  }
+
+  /// The invited person must already have a CricHive account.
+  Future<void> grantTeamManager(String tournamentSlug, String teamId, {required String email}) async {
+    await _dio.post('/tournaments/$tournamentSlug/teams/$teamId/managers', data: {'email': email});
+  }
+
+  Future<void> revokeTeamManager(String tournamentSlug, String teamId, String membershipId) async {
+    await _dio.delete('/tournaments/$tournamentSlug/teams/$teamId/managers/$membershipId');
+  }
+
+  Future<List<Player>> searchPlayers(String query) async {
+    final res = await _dio.get('/players/search', queryParameters: {'q': query});
+    final data = (res.data as Map<String, dynamic>)['data'] as List;
+    return data.cast<Map<String, dynamic>>().map(Player.fromJson).toList();
+  }
+
   Future<PlayerDetail> getPlayer(String id) async {
     final res = await _dio.get('/players/$id');
     return PlayerDetail.fromJson(res.data as Map<String, dynamic>);

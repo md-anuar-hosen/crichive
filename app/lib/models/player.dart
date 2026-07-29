@@ -26,11 +26,21 @@ class SquadPlayer extends Player {
     this.jerseyNumber,
     required this.isCaptain,
     required this.isKeeper,
+    this.isApproved = true,
+    this.licenceVerified = false,
   });
 
   final int? jerseyNumber;
   final bool isCaptain;
   final bool isKeeper;
+
+  /// Whether the organiser has confirmed this squad placement. A team
+  /// manager's own addition/edit starts unapproved; an organiser's own
+  /// addition is approved immediately. Defaults true so older API
+  /// responses without this field (there are none left, but just in
+  /// case) don't spuriously look pending.
+  final bool isApproved;
+  final bool licenceVerified;
 
   factory SquadPlayer.fromJson(Map<String, dynamic> json) => SquadPlayer(
         id: json['id'] as String,
@@ -41,7 +51,28 @@ class SquadPlayer extends Player {
         jerseyNumber: json['jersey_number'] as int?,
         isCaptain: json['is_captain'] as bool? ?? false,
         isKeeper: json['is_keeper'] as bool? ?? false,
+        isApproved: json['is_approved'] as bool? ?? true,
+        licenceVerified: json['licence_verified'] as bool? ?? false,
       );
+}
+
+class TeamManager {
+  const TeamManager({required this.membershipId, required this.userId, required this.displayName, required this.email});
+
+  final String membershipId;
+  final String userId;
+  final String displayName;
+  final String? email;
+
+  factory TeamManager.fromJson(Map<String, dynamic> json) {
+    final user = json['user'] as Map<String, dynamic>;
+    return TeamManager(
+      membershipId: json['id'] as String,
+      userId: user['id'] as String,
+      displayName: user['display_name'] as String,
+      email: user['email'] as String?,
+    );
+  }
 }
 
 class CareerStats {

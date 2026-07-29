@@ -44,6 +44,17 @@ final squadProvider = FutureProvider.family<List<SquadPlayer>, SquadKey>((ref, k
   return ref.watch(apiClientProvider).getSquad(key.teamId, key.tournamentSlug);
 });
 
+/// Same shape as [squadProvider] but includes pending (not-yet-approved)
+/// entries — only the tournament's organiser or that team's own manager
+/// can actually load this without a 403.
+final managedSquadProvider = FutureProvider.family<List<SquadPlayer>, SquadKey>((ref, key) {
+  return ref.watch(apiClientProvider).getManagedSquad(key.tournamentSlug, key.teamId);
+});
+
+final teamManagersProvider = FutureProvider.family<List<TeamManager>, SquadKey>((ref, key) {
+  return ref.watch(apiClientProvider).getTeamManagers(key.tournamentSlug, key.teamId);
+});
+
 final playerProvider = FutureProvider.family<PlayerDetail, String>((ref, id) {
   return ref.watch(apiClientProvider).getPlayer(id);
 });
