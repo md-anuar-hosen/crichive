@@ -163,6 +163,11 @@ class ApiClient {
     await _dio.post('/matches/$matchId/abandon', data: {'reason': reason});
   }
 
+  Future<TournamentRules> updateTournamentRules(String slug, Map<String, dynamic> fields) async {
+    final res = await _dio.patch('/tournaments/$slug/rules', data: fields);
+    return TournamentRules.fromJson((res.data as Map<String, dynamic>)['rules'] as Map<String, dynamic>);
+  }
+
   // ---------------------------------------------------------------------
   // GDPR data requests
   // ---------------------------------------------------------------------

@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../models/fixture.dart';
+import '../state/auth_controller.dart';
 import '../state/providers.dart';
 import '../widgets/async_value_view.dart';
+import 'tournament_rules_screen.dart';
 
 class TournamentDetailScreen extends ConsumerWidget {
   const TournamentDetailScreen({super.key, required this.slug});
@@ -15,6 +17,7 @@ class TournamentDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tournament = ref.watch(tournamentProvider(slug));
+    final isAuthed = ref.watch(authControllerProvider).status == AuthStatus.authenticated;
 
     return DefaultTabController(
       length: 3,
@@ -24,6 +27,16 @@ class TournamentDetailScreen extends ConsumerWidget {
             tournament.whenOrNull(data: (t) => t.name) ?? 'Tournament',
             overflow: TextOverflow.ellipsis,
           ),
+          actions: [
+            if (isAuthed)
+              IconButton(
+                tooltip: 'Edit rules',
+                icon: const Icon(Icons.tune),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => TournamentRulesScreen(tournamentSlug: slug)),
+                ),
+              ),
+          ],
           bottom: const TabBar(
             tabs: [Tab(text: 'Fixtures'), Tab(text: 'Teams'), Tab(text: 'Standings')],
           ),

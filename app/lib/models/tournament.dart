@@ -5,10 +5,14 @@ class TournamentRules {
     required this.maxOversPerBowler,
     required this.powerplayOvers,
     required this.playersPerSide,
+    required this.wideRuns,
+    required this.noballRuns,
+    required this.freeHitAfterNoball,
     required this.pointsWin,
     required this.pointsTie,
     required this.pointsNoResult,
     required this.pointsLoss,
+    required this.bonusPointEnabled,
     required this.superOverOnTie,
     required this.dlsEnabled,
   });
@@ -18,10 +22,14 @@ class TournamentRules {
   final int maxOversPerBowler;
   final int powerplayOvers;
   final int playersPerSide;
+  final int wideRuns;
+  final int noballRuns;
+  final bool freeHitAfterNoball;
   final int pointsWin;
   final int pointsTie;
   final int pointsNoResult;
   final int pointsLoss;
+  final bool bonusPointEnabled;
   final bool superOverOnTie;
   final bool dlsEnabled;
 
@@ -31,10 +39,14 @@ class TournamentRules {
         maxOversPerBowler: json['max_overs_per_bowler'] as int,
         powerplayOvers: json['powerplay_overs'] as int,
         playersPerSide: json['players_per_side'] as int,
+        wideRuns: json['wide_runs'] as int,
+        noballRuns: json['noball_runs'] as int,
+        freeHitAfterNoball: json['free_hit_after_noball'] as bool,
         pointsWin: json['points_win'] as int,
         pointsTie: json['points_tie'] as int,
         pointsNoResult: json['points_no_result'] as int,
         pointsLoss: json['points_loss'] as int,
+        bonusPointEnabled: json['bonus_point_enabled'] as bool,
         superOverOnTie: json['super_over_on_tie'] as bool,
         dlsEnabled: json['dls_enabled'] as bool,
       );
