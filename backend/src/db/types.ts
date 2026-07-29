@@ -343,6 +343,13 @@ export interface Partnerships {
   wicket_number: number;
 }
 
+export interface PlatformSettings {
+  id: Generated<boolean>;
+  organizer_signup_mode: Generated<string>;
+  updated_at: Generated<Timestamp>;
+  updated_by: string | null;
+}
+
 export interface PlayerCareerStats {
   balls_faced: Generated<number>;
   best_bowling_runs: number | null;
@@ -467,6 +474,8 @@ export interface TournamentRules {
 }
 
 export interface Tournaments {
+  approved_at: Timestamp | null;
+  approved_by: string | null;
   ball: Generated<BallType>;
   country_code: Generated<string>;
   created_at: Generated<Timestamp>;
@@ -526,6 +535,7 @@ export interface DB {
   "neon_auth.user": NeonAuthUser;
   "neon_auth.verification": NeonAuthVerification;
   partnerships: Partnerships;
+  platform_settings: PlatformSettings;
   player_career_stats: PlayerCareerStats;
   players: Players;
   stages: Stages;

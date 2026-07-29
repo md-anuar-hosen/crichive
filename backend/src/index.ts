@@ -10,6 +10,7 @@ import publicRouter from './routes/public';
 import scoringRouter from './routes/scoring';
 import dataRequestsRouter from './routes/dataRequests';
 import squadsRouter from './routes/squads';
+import tournamentsRouter from './routes/tournaments';
 import { attachRealtimeServer } from './realtime/server';
 import { requestLogging } from './middleware/requestLogging';
 
@@ -53,6 +54,10 @@ app.get('/health/db', async (_req, res) => {
 
 app.use('/auth', publicRateLimit, authRouter);
 app.use(scoringRateLimit, scoringRouter);
+// Must be mounted before publicRouter: publicRouter's GET /tournaments/:slug
+// would otherwise swallow literal routes like GET /tournaments/pending first,
+// since Express matches in registration order, not by specificity.
+app.use(publicRateLimit, tournamentsRouter);
 app.use(publicRateLimit, publicRouter);
 app.use(publicRateLimit, dataRequestsRouter);
 app.use(publicRateLimit, squadsRouter);

@@ -51,6 +51,7 @@ interface PublicTournamentRow {
   starts_on: Date | null;
   ends_on: Date | null;
   logo_url: string | null;
+  approved_at?: Date | null;
 }
 
 export function serializeTournament(t: PublicTournamentRow) {
@@ -65,6 +66,7 @@ export function serializeTournament(t: PublicTournamentRow) {
     starts_on: t.starts_on,
     ends_on: t.ends_on,
     logo_url: t.logo_url,
+    is_approved: t.approved_at !== undefined ? t.approved_at !== null : true,
   };
 }
 
