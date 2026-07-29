@@ -68,6 +68,7 @@ class BowlingCardRow {
     required this.maidens,
     required this.wides,
     required this.noballs,
+    required this.dots,
   });
 
   final String id;
@@ -78,6 +79,7 @@ class BowlingCardRow {
   final int maidens;
   final int wides;
   final int noballs;
+  final int dots;
 
   factory BowlingCardRow.fromJson(Map<String, dynamic> json) => BowlingCardRow(
         id: json['id'] as String,
@@ -88,6 +90,7 @@ class BowlingCardRow {
         maidens: json['maidens'] as int,
         wides: json['wides'] as int,
         noballs: json['noballs'] as int,
+        dots: json['dots'] as int,
       );
 
   String oversDisplay(int ballsPerOver) => formatOvers(legalBalls, ballsPerOver);

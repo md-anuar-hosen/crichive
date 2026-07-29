@@ -52,3 +52,27 @@ int projectedScore({
   final rate = runRate(runsSoFar, legalBallsBowled, ballsPerOver);
   return (rate * maxOvers).round();
 }
+
+/// CricHive's own simplified win-probability estimate for the chasing side
+/// during an active run chase. This is NOT a statistical model trained on
+/// match data (unlike Cricbuzz's) — it's a transparent heuristic: how much
+/// harder the required rate is than the pace already set, discounted by how
+/// many wickets are still in hand. Returns the chasing team's estimated win
+/// probability as a percentage in [1, 99] (never fully certain either way
+/// while the chase is still live).
+double chasingTeamWinProbability({
+  required double requiredRunRate,
+  required double currentRunRate,
+  required int wicketsInHand,
+  required int wicketsAvailable,
+}) {
+  if (wicketsAvailable <= 0) return 50;
+  final wicketsFactor = (wicketsInHand / wicketsAvailable).clamp(0.0, 1.0);
+  // A currentRunRate of 0 (no balls faced yet) would make the ratio blow up;
+  // floor it at a token rate so an unstarted chase reads as roughly neutral.
+  final safeCurrentRate = currentRunRate <= 0 ? 0.5 : currentRunRate;
+  final rateRatio = requiredRunRate <= 0 ? 0 : requiredRunRate / safeCurrentRate;
+  final pressure = rateRatio / (0.3 + wicketsFactor);
+  final probability = 100 / (1 + pressure * pressure);
+  return probability.clamp(1.0, 99.0);
+}

@@ -10,9 +10,10 @@ import '../widgets/async_value_view.dart';
 import 'tournament_rules_screen.dart';
 
 class TournamentDetailScreen extends ConsumerWidget {
-  const TournamentDetailScreen({super.key, required this.slug});
+  const TournamentDetailScreen({super.key, required this.slug, this.initialTabIndex = 0});
 
   final String slug;
+  final int initialTabIndex;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -21,6 +22,7 @@ class TournamentDetailScreen extends ConsumerWidget {
 
     return DefaultTabController(
       length: 4,
+      initialIndex: initialTabIndex,
       child: Scaffold(
         appBar: AppBar(
           title: Text(

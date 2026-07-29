@@ -144,9 +144,9 @@ class ApiClient {
         'extra_byes': extraByes,
         'extra_legbyes': extraLegbyes,
         'extra_penalty': extraPenalty,
-        if (wicketKind != null) 'wicket_kind': wicketKind,
-        if (playerOutId != null) 'player_out_id': playerOutId,
-        if (fielderId != null) 'fielder_id': fielderId,
+        'wicket_kind': ?wicketKind,
+        'player_out_id': ?playerOutId,
+        'fielder_id': ?fielderId,
       },
     );
     return DeliveryResult.fromJson(res.data as Map<String, dynamic>);
@@ -237,10 +237,10 @@ class ApiClient {
       queryParameters: {
         'page': page,
         'limit': limit,
-        if (group != null) 'group': group,
-        if (date != null) 'date': date,
-        if (team != null) 'team': team,
-        if (status != null) 'status': status,
+        'group': ?group,
+        'date': ?date,
+        'team': ?team,
+        'status': ?status,
       },
     );
     return Paginated.fromJson(res.data as Map<String, dynamic>, Fixture.fromJson);

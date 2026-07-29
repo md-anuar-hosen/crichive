@@ -7,12 +7,15 @@ import '../models/match_detail.dart';
 import '../realtime/match_realtime_client.dart';
 import '../state/auth_controller.dart';
 import '../state/providers.dart';
+import '../theme/chart_palette.dart';
 import '../utils/cricket_math.dart';
 import '../widgets/async_value_view.dart';
 import 'match_charts_screen.dart';
+import 'match_squads_screen.dart';
 import 'playing_xi_screen.dart';
 import 'scoring_screen.dart';
 import 'toss_screen.dart';
+import 'tournament_detail_screen.dart';
 
 const _finishedStatuses = {'completed', 'abandoned', 'cancelled', 'forfeited'};
 
@@ -202,6 +205,10 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
           data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules?.dlsEnabled,
         ) ??
         false;
+    final playersPerSide = match.whenOrNull(
+          data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules?.playersPerSide,
+        ) ??
+        11;
 
     return Scaffold(
       appBar: AppBar(
@@ -246,7 +253,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
         child: AsyncValueView(
           value: match,
           onRetry: () => ref.invalidate(matchProvider(widget.matchId)),
-          data: (context, m) => _MatchBody(match: m, ballsPerOver: ballsPerOver),
+          data: (context, m) => _MatchBody(match: m, ballsPerOver: ballsPerOver, playersPerSide: playersPerSide),
         ),
       ),
     );
@@ -254,9 +261,10 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
 }
 
 class _MatchBody extends StatelessWidget {
-  const _MatchBody({required this.match, required this.ballsPerOver});
+  const _MatchBody({required this.match, required this.ballsPerOver, required this.playersPerSide});
   final MatchDetail match;
   final int ballsPerOver;
+  final int playersPerSide;
 
   @override
   Widget build(BuildContext context) {
@@ -284,7 +292,10 @@ class _MatchBody extends StatelessWidget {
         ],
         const SizedBox(height: 16),
         if (match.innings.isEmpty) const EmptyState(message: 'Play has not started yet.'),
-        for (final innings in match.innings) _InningsCard(match: match, innings: innings, ballsPerOver: ballsPerOver),
+        for (final innings in match.innings)
+          _InningsCard(match: match, innings: innings, ballsPerOver: ballsPerOver, playersPerSide: playersPerSide),
+        const SizedBox(height: 8),
+        _QuickNavRow(match: match),
       ],
     );
   }
@@ -301,11 +312,56 @@ class _MatchBody extends StatelessWidget {
   }
 }
 
+/// Bottom quick-nav pills — the Cricbuzz reference image's own "Graphs /
+/// Series Stats / Table / Schedule" row. CricHive doesn't have separate
+/// Highlights/News/Full-Commentary content sources, so this links to what
+/// actually exists: charts+commentary, squads, and the points table.
+class _QuickNavRow extends StatelessWidget {
+  const _QuickNavRow({required this.match});
+  final MatchDetail match;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        OutlinedButton.icon(
+          icon: const Icon(Icons.bar_chart_outlined, size: 18),
+          label: const Text('Graphs'),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => MatchChartsScreen(matchId: match.id)),
+          ),
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.groups_outlined, size: 18),
+          label: const Text('Squads'),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => MatchSquadsScreen(tournamentSlug: match.tournamentSlug, teamA: match.teamA, teamB: match.teamB),
+            ),
+          ),
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.table_chart_outlined, size: 18),
+          label: const Text('Points Table'),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => TournamentDetailScreen(slug: match.tournamentSlug, initialTabIndex: 2),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _InningsCard extends StatelessWidget {
-  const _InningsCard({required this.match, required this.innings, required this.ballsPerOver});
+  const _InningsCard({required this.match, required this.innings, required this.ballsPerOver, required this.playersPerSide});
   final MatchDetail match;
   final InningsDetail innings;
   final int ballsPerOver;
+  final int playersPerSide;
 
   String _teamName(String teamId) {
     if (teamId == match.teamA.id) return match.teamA.label;
@@ -340,67 +396,27 @@ class _InningsCard extends StatelessWidget {
               ],
             ),
             if (totals != null) ..._buildRateLines(context, totals, isOpen),
+            if (totals != null && isOpen) ..._buildChaseHeadline(context, totals),
             if (innings.interruptions.isNotEmpty) ...[
               const SizedBox(height: 8),
               _InterruptionBanner(innings: innings),
             ],
+            if (isOpen && innings.partnerships.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _KeyStatsBox(partnership: innings.partnerships.last),
+            ],
+            if (totals != null && isOpen) ..._buildWinProbability(context, totals),
             const SizedBox(height: 12),
             if (innings.batting.isNotEmpty) ...[
-              Text('Batting', style: Theme.of(context).textTheme.labelLarge),
-              const SizedBox(height: 4),
-              ...innings.batting.map(
-                (b) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          b.name,
-                          style: b.isOut ? null : const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 4,
-                        child: Text(
-                          b.isOut ? (b.dismissalText ?? 'out') : 'not out',
-                          style: Theme.of(context).textTheme.bodySmall,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Text('${b.runs} (${b.ballsFaced})', textAlign: TextAlign.end),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              _BattingTable(rows: innings.batting),
               const SizedBox(height: 12),
             ],
             if (innings.bowling.isNotEmpty) ...[
-              Text('Bowling', style: Theme.of(context).textTheme.labelLarge),
+              _BowlingTable(rows: innings.bowling, ballsPerOver: ballsPerOver),
               const SizedBox(height: 4),
-              ...innings.bowling.map(
-                (b) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    children: [
-                      Expanded(flex: 3, child: Text(b.name)),
-                      Expanded(
-                        flex: 5,
-                        child: Text(
-                          '${b.oversDisplay(ballsPerOver)}-${b.maidens}-${b.runsConceded}-${b.wickets}',
-                          textAlign: TextAlign.end,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             ],
             if (fallOfWickets.isNotEmpty) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text('Fall of wickets', style: Theme.of(context).textTheme.labelLarge),
               const SizedBox(height: 4),
               Text(
@@ -441,14 +457,8 @@ class _InningsCard extends StatelessWidget {
           maxOvers: innings.maxOvers,
           ballsPerOver: ballsPerOver,
         );
-        final remaining = ballsRemaining(
-          maxOvers: innings.maxOvers,
-          ballsPerOver: ballsPerOver,
-          legalBallsBowled: totals.legalBalls,
-        );
-        final runsNeeded = innings.target! - totals.runs;
-        if (rrr != null && runsNeeded > 0) {
-          lines.add(Text('RRR ${rrr.toStringAsFixed(2)} · need $runsNeeded off $remaining balls', style: style));
+        if (rrr != null && innings.target! - totals.runs > 0) {
+          lines.add(Text('RRR ${rrr.toStringAsFixed(2)}', style: style));
         }
       }
     } else if (isOpen) {
@@ -462,6 +472,301 @@ class _InningsCard extends StatelessWidget {
     }
 
     return lines;
+  }
+
+  /// The bold red "{Team} need N runs in M balls" headline, Cricbuzz-style.
+  List<Widget> _buildChaseHeadline(BuildContext context, InningsTotals totals) {
+    if (innings.target == null) return const [];
+    final remaining = ballsRemaining(maxOvers: innings.maxOvers, ballsPerOver: ballsPerOver, legalBallsBowled: totals.legalBalls);
+    final runsNeeded = innings.target! - totals.runs;
+    if (remaining <= 0 || runsNeeded <= 0) return const [];
+    return [
+      const SizedBox(height: 4),
+      Text(
+        '${_teamName(innings.battingTeamId)} need $runsNeeded runs in $remaining balls',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.red.shade700, fontWeight: FontWeight.bold),
+      ),
+    ];
+  }
+
+  /// "CricHive Win Predictor" — our own simplified heuristic (required vs.
+  /// current run rate, discounted by wickets in hand), not a statistical
+  /// model. Only shown once there's enough data for it to mean anything.
+  List<Widget> _buildWinProbability(BuildContext context, InningsTotals totals) {
+    if (innings.target == null || totals.legalBalls == 0) return const [];
+    final remaining = ballsRemaining(maxOvers: innings.maxOvers, ballsPerOver: ballsPerOver, legalBallsBowled: totals.legalBalls);
+    final runsNeeded = innings.target! - totals.runs;
+    if (remaining <= 0 || runsNeeded <= 0) return const [];
+
+    final rrr = requiredRunRate(
+      target: innings.target!,
+      runsSoFar: totals.runs,
+      legalBallsBowled: totals.legalBalls,
+      maxOvers: innings.maxOvers,
+      ballsPerOver: ballsPerOver,
+    );
+    if (rrr == null) return const [];
+    final crr = runRate(totals.runs, totals.legalBalls, ballsPerOver);
+    final wicketsAvailable = playersPerSide - 1;
+    final wicketsInHand = (wicketsAvailable - totals.wickets).clamp(0, wicketsAvailable);
+    final chasingProbability = chasingTeamWinProbability(
+      requiredRunRate: rrr,
+      currentRunRate: crr,
+      wicketsInHand: wicketsInHand,
+      wicketsAvailable: wicketsAvailable,
+    );
+
+    final brightness = Theme.of(context).brightness;
+    return [
+      const SizedBox(height: 8),
+      _WinProbabilityBar(
+        defendingLabel: _teamName(innings.bowlingTeamId),
+        chasingLabel: _teamName(innings.battingTeamId),
+        chasingProbability: chasingProbability,
+        defendingColor: ChartPalette.categorical(0, brightness),
+        chasingColor: ChartPalette.categorical(1, brightness),
+      ),
+    ];
+  }
+}
+
+/// Fixed pixel column widths, not flex — a Row of Expanded cells squeezes
+/// (and clips) on a genuinely narrow phone screen instead of scrolling.
+/// Wrapping in SingleChildScrollView(horizontal) matches how the standings
+/// table already handles the same problem.
+class _BattingTable extends StatelessWidget {
+  const _BattingTable({required this.rows});
+  final List<BattingCardRow> rows;
+
+  static const _nameWidth = 140.0;
+  static const _numWidth = 36.0;
+  static const _srWidth = 56.0;
+  static const _totalWidth = _nameWidth + _numWidth * 4 + _srWidth;
+
+  Widget _cell(String text, double width, {TextAlign align = TextAlign.end, TextStyle? style}) =>
+      SizedBox(width: width, child: Text(text, textAlign: align, style: style, overflow: TextOverflow.ellipsis));
+
+  @override
+  Widget build(BuildContext context) {
+    final headerStyle = Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline);
+    final bodyStyle = Theme.of(context).textTheme.bodySmall;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Batting', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 4),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: _totalWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _cell('Batter', _nameWidth, align: TextAlign.start, style: headerStyle),
+                    _cell('R', _numWidth, style: headerStyle),
+                    _cell('B', _numWidth, style: headerStyle),
+                    _cell('4s', _numWidth, style: headerStyle),
+                    _cell('6s', _numWidth, style: headerStyle),
+                    _cell('SR', _srWidth, style: headerStyle),
+                  ],
+                ),
+                const Divider(height: 8),
+                for (final b in rows)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            _cell(
+                              b.name,
+                              _nameWidth,
+                              align: TextAlign.start,
+                              style: bodyStyle?.copyWith(fontWeight: b.isOut ? FontWeight.normal : FontWeight.bold),
+                            ),
+                            _cell('${b.runs}', _numWidth, style: bodyStyle),
+                            _cell('${b.ballsFaced}', _numWidth, style: bodyStyle),
+                            _cell('${b.fours}', _numWidth, style: bodyStyle),
+                            _cell('${b.sixes}', _numWidth, style: bodyStyle),
+                            _cell(b.strikeRate.toStringAsFixed(2), _srWidth, style: bodyStyle),
+                          ],
+                        ),
+                        SizedBox(
+                          width: _totalWidth,
+                          child: Text(
+                            b.isOut ? (b.dismissalText ?? 'out') : 'not out',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BowlingTable extends StatelessWidget {
+  const _BowlingTable({required this.rows, required this.ballsPerOver});
+  final List<BowlingCardRow> rows;
+  final int ballsPerOver;
+
+  static const _nameWidth = 140.0;
+  static const _numWidth = 36.0;
+  static const _econWidth = 56.0;
+  static const _totalWidth = _nameWidth + _numWidth * 5 + _econWidth;
+
+  Widget _cell(String text, double width, {TextAlign align = TextAlign.end, TextStyle? style}) =>
+      SizedBox(width: width, child: Text(text, textAlign: align, style: style, overflow: TextOverflow.ellipsis));
+
+  @override
+  Widget build(BuildContext context) {
+    final headerStyle = Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline);
+    final bodyStyle = Theme.of(context).textTheme.bodySmall;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Bowling', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 4),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: _totalWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _cell('Bowler', _nameWidth, align: TextAlign.start, style: headerStyle),
+                    _cell('O', _numWidth, style: headerStyle),
+                    _cell('M', _numWidth, style: headerStyle),
+                    _cell('R', _numWidth, style: headerStyle),
+                    _cell('W', _numWidth, style: headerStyle),
+                    _cell('Econ', _econWidth, style: headerStyle),
+                    _cell('D', _numWidth, style: headerStyle),
+                  ],
+                ),
+                const Divider(height: 8),
+                for (final b in rows)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        _cell(b.name, _nameWidth, align: TextAlign.start, style: bodyStyle),
+                        _cell(b.oversDisplay(ballsPerOver), _numWidth, style: bodyStyle),
+                        _cell('${b.maidens}', _numWidth, style: bodyStyle),
+                        _cell('${b.runsConceded}', _numWidth, style: bodyStyle),
+                        _cell('${b.wickets}', _numWidth, style: bodyStyle),
+                        _cell(b.economy(ballsPerOver).toStringAsFixed(2), _econWidth, style: bodyStyle),
+                        _cell('${b.dots}', _numWidth, style: bodyStyle),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Boxed live stat — currently just the in-progress partnership, Cricbuzz's
+/// "Key Stats" panel. Toss is shown once at the top of the match, not
+/// repeated per innings.
+class _KeyStatsBox extends StatelessWidget {
+  const _KeyStatsBox({required this.partnership});
+  final Partnership partnership;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: colors.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
+      child: Row(
+        children: [
+          Icon(Icons.groups_outlined, size: 16, color: colors.outline),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Partnership: ${partnership.runs} (${partnership.balls}) — ${partnership.playerA.name} & ${partnership.playerB.name}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "CricHive Win Predictor" — our own simplified heuristic bar, not a claim
+/// to replicate Cricbuzz's statistical win-probability model.
+class _WinProbabilityBar extends StatelessWidget {
+  const _WinProbabilityBar({
+    required this.defendingLabel,
+    required this.chasingLabel,
+    required this.chasingProbability,
+    required this.defendingColor,
+    required this.chasingColor,
+  });
+
+  final String defendingLabel;
+  final String chasingLabel;
+  final double chasingProbability;
+  final Color defendingColor;
+  final Color chasingColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final defendingProbability = 100 - chasingProbability;
+    final chasingFlex = chasingProbability.round().clamp(1, 99);
+    final defendingFlex = defendingProbability.round().clamp(1, 99);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'CricHive Win Predictor',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '$defendingLabel ${defendingProbability.round()}%',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: defendingColor, fontWeight: FontWeight.bold),
+            ),
+            Text(
+              '${chasingProbability.round()}% $chasingLabel',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: chasingColor, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: SizedBox(
+            height: 8,
+            child: Row(
+              children: [
+                Expanded(flex: defendingFlex, child: Container(color: defendingColor)),
+                Expanded(flex: chasingFlex, child: Container(color: chasingColor)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
