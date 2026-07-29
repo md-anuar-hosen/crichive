@@ -94,6 +94,7 @@ export async function getMatchScorecard(matchId: string) {
             'bowling_cards.maidens',
             'bowling_cards.wides',
             'bowling_cards.noballs',
+            'bowling_cards.dots',
           ])
           .where('bowling_cards.innings_id', '=', inn.id)
           .execute(),
@@ -187,6 +188,7 @@ export async function getMatchScorecard(matchId: string) {
           maidens: r.maidens,
           wides: r.wides,
           noballs: r.noballs,
+          dots: r.dots,
         })),
         partnerships: partnershipRows.map((p) => ({
           wicket_number: p.wicket_number,

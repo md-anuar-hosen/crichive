@@ -61,6 +61,7 @@ export async function applyScorecardToDerivedTables(trx: Kysely<DB>, inningsId: 
           maidens: b.maidens,
           wides: b.wides,
           noballs: b.noballs,
+          dots: b.dots,
         })),
       )
       .execute();

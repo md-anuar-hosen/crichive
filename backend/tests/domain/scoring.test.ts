@@ -51,12 +51,27 @@ function overOf(overNumber: number, bowlerId: string, seqStart: number): Deliver
 }
 
 describe('1. a clean over of six dot balls', () => {
-  it('gives 0/0, 6 legal balls, and a bowler maiden', () => {
+  it('gives 0/0, 6 legal balls, a bowler maiden, and 6 dot balls', () => {
     const card = buildScorecard(overOf(0, 'B1', 1), rules);
     expect(card.runs).toBe(0);
     expect(card.wickets).toBe(0);
     expect(card.legalBalls).toBe(6);
-    expect(card.bowlingCards.find((b) => b.playerId === 'B1')?.maidens).toBe(1);
+    const bowler = card.bowlingCards.find((b) => b.playerId === 'B1');
+    expect(bowler?.maidens).toBe(1);
+    expect(bowler?.dots).toBe(6);
+  });
+});
+
+describe('1b. dot balls only count legal deliveries with zero total runs', () => {
+  it('excludes scoring balls, wides/no-balls, and byes/leg-byes from the dot count', () => {
+    const deliveries = [
+      makeDelivery({ sequence: 1, ballInOver: 1, runsOffBat: 4 }), // scoring ball, not a dot
+      makeDelivery({ sequence: 2, ballInOver: 0, isLegalDelivery: false, extraWides: 1 }), // illegal, not a dot
+      makeDelivery({ sequence: 3, ballInOver: 2, extraByes: 1 }), // legal but conceded a run via byes, not a dot
+      makeDelivery({ sequence: 4, ballInOver: 3 }), // the only true dot ball
+    ];
+    const card = buildScorecard(deliveries, rules);
+    expect(card.bowlingCards.find((b) => b.playerId === 'B1')?.dots).toBe(1);
   });
 });
 

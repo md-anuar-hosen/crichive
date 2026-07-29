@@ -86,6 +86,7 @@ export interface BowlingLine {
   maidens: number;
   wides: number;
   noballs: number;
+  dots: number;
 }
 
 export interface PartnershipLine {

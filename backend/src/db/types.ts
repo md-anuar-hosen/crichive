@@ -73,6 +73,7 @@ export interface BattingCards {
 }
 
 export interface BowlingCards {
+  dots: Generated<number>;
   innings_id: string;
   legal_balls: Generated<number>;
   maidens: Generated<number>;

@@ -55,7 +55,7 @@ export function buildScorecard(allDeliveries: Delivery[], rules: TournamentRules
   function ensureBowler(id: string): BowlingLine {
     let line = bowlingCards.get(id);
     if (!line) {
-      line = { playerId: id, legalBalls: 0, runsConceded: 0, wickets: 0, maidens: 0, wides: 0, noballs: 0 };
+      line = { playerId: id, legalBalls: 0, runsConceded: 0, wickets: 0, maidens: 0, wides: 0, noballs: 0, dots: 0 };
       bowlingCards.set(id, line);
     }
     return line;
@@ -120,6 +120,8 @@ export function buildScorecard(allDeliveries: Delivery[], rules: TournamentRules
       legalBalls += 1;
       bowler.legalBalls += 1;
       overSummary.legalBalls += 1;
+      // A "dot ball" conceded no runs at all, from any source (bat, byes, leg-byes).
+      if (ballRuns === 0) bowler.dots += 1;
     }
 
     currentPartnership.runs += ballRuns - delivery.extraPenalty;
