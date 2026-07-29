@@ -63,7 +63,6 @@ export interface AuditLog {
 
 export interface BattingCards {
   balls_faced: Generated<number>;
-  dismissal_text: string | null;
   fours: Generated<number>;
   innings_id: string;
   is_out: Generated<boolean>;

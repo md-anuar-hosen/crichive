@@ -16,6 +16,7 @@ import { getMatchScorecard } from '../services/matchScorecard';
 import { loadTournamentRules } from '../services/rules';
 import { recomputeGroupStandings } from '../services/standingsService';
 import { recomputePlayerCareerStats } from '../services/careerStatsService';
+import { computeAndSetPlayerOfMatch } from '../services/matchAwardsService';
 import { broadcastDelivery, broadcastInterruption } from '../realtime/hub';
 import { writeAuditLog } from '../services/auditLog';
 
@@ -643,6 +644,7 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
   if (matchPlayers.length) {
     await recomputePlayerCareerStats(matchPlayers.map((p) => p.player_id));
   }
+  await computeAndSetPlayerOfMatch(match.id);
 
   res.json({ ok: true, outcome });
 });

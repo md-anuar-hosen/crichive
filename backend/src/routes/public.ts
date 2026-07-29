@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { sql } from 'kysely';
 import { db } from '../db/index';
+import { selectBestPerformer } from '../domain/scoring';
 import { parsePagination, paginated } from '../lib/pagination';
 import { serializePlayer, serializeTeam, serializeTournament } from '../serializers/public';
 import { getMatchScorecard } from '../services/matchScorecard';
@@ -240,6 +242,154 @@ router.get('/tournaments/:slug/standings', async (req, res) => {
   }
 
   res.json({ groups: [...groups.values()] });
+});
+
+// ---------------------------------------------------------------------------
+// GET /tournaments/:slug/awards — Player of the Tournament + leaderboards
+// ---------------------------------------------------------------------------
+
+router.get('/tournaments/:slug/awards', async (req, res) => {
+  const tournament = await findTournamentBySlug(req.params.slug);
+  if (!tournament) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+
+  // Same "which matches count" convention as standings/NRR: completed and
+  // abandoned matches contribute (the cricket in them really happened),
+  // super-over innings are excluded, matches still in progress don't count yet.
+  const [battingAgg, bowlingAgg, fieldingAgg] = await Promise.all([
+    db
+      .selectFrom('batting_cards')
+      .innerJoin('innings', 'innings.id', 'batting_cards.innings_id')
+      .innerJoin('matches', 'matches.id', 'innings.match_id')
+      .innerJoin('players', 'players.id', 'batting_cards.player_id')
+      .select((eb) => [
+        'batting_cards.player_id',
+        'players.full_name',
+        'players.display_name',
+        eb.fn.coalesce(eb.fn.sum<string>('batting_cards.runs'), sql<string>`0`).as('runs'),
+        eb.fn.coalesce(eb.fn.sum<string>('batting_cards.fours'), sql<string>`0`).as('fours'),
+        eb.fn.coalesce(eb.fn.sum<string>('batting_cards.sixes'), sql<string>`0`).as('sixes'),
+      ])
+      .where('matches.tournament_id', '=', tournament.id)
+      .where('matches.status', 'in', ['completed', 'abandoned'])
+      .where('innings.is_super_over', '=', false)
+      .groupBy(['batting_cards.player_id', 'players.full_name', 'players.display_name'])
+      .execute(),
+    db
+      .selectFrom('bowling_cards')
+      .innerJoin('innings', 'innings.id', 'bowling_cards.innings_id')
+      .innerJoin('matches', 'matches.id', 'innings.match_id')
+      .innerJoin('players', 'players.id', 'bowling_cards.player_id')
+      .select((eb) => [
+        'bowling_cards.player_id',
+        'players.full_name',
+        'players.display_name',
+        eb.fn.coalesce(eb.fn.sum<string>('bowling_cards.wickets'), sql<string>`0`).as('wickets'),
+        eb.fn.coalesce(eb.fn.sum<string>('bowling_cards.maidens'), sql<string>`0`).as('maidens'),
+        eb.fn.coalesce(eb.fn.sum<string>('bowling_cards.runs_conceded'), sql<string>`0`).as('runs_conceded'),
+      ])
+      .where('matches.tournament_id', '=', tournament.id)
+      .where('matches.status', 'in', ['completed', 'abandoned'])
+      .where('innings.is_super_over', '=', false)
+      .groupBy(['bowling_cards.player_id', 'players.full_name', 'players.display_name'])
+      .execute(),
+    db
+      .selectFrom('deliveries')
+      .innerJoin('innings', 'innings.id', 'deliveries.innings_id')
+      .innerJoin('matches', 'matches.id', 'innings.match_id')
+      .select((eb) => [
+        'deliveries.fielder_id as player_id',
+        eb.fn.countAll<string>().filterWhere('deliveries.wicket_kind', '=', 'caught').as('catches'),
+        eb.fn.countAll<string>().filterWhere('deliveries.wicket_kind', '=', 'stumped').as('stumpings'),
+        eb.fn.countAll<string>().filterWhere('deliveries.wicket_kind', '=', 'run_out').as('run_outs'),
+      ])
+      .where('matches.tournament_id', '=', tournament.id)
+      .where('matches.status', 'in', ['completed', 'abandoned'])
+      .where('innings.is_super_over', '=', false)
+      .where('deliveries.voided_at', 'is', null)
+      .where('deliveries.fielder_id', 'is not', null)
+      .groupBy('deliveries.fielder_id')
+      .execute(),
+  ]);
+
+  interface Aggregate {
+    playerId: string;
+    name: string | null;
+    runs: number;
+    fours: number;
+    sixes: number;
+    wickets: number;
+    maidens: number;
+    runsConceded: number;
+    catches: number;
+    stumpings: number;
+    runOuts: number;
+  }
+  const players = new Map<string, Aggregate>();
+  const ensure = (playerId: string, name?: string | null): Aggregate => {
+    let p = players.get(playerId);
+    if (!p) {
+      p = { playerId, name: name ?? null, runs: 0, fours: 0, sixes: 0, wickets: 0, maidens: 0, runsConceded: 0, catches: 0, stumpings: 0, runOuts: 0 };
+      players.set(playerId, p);
+    }
+    if (name && !p.name) p.name = name;
+    return p;
+  };
+
+  for (const row of battingAgg) {
+    const p = ensure(row.player_id, row.display_name ?? row.full_name);
+    p.runs = Number(row.runs);
+    p.fours = Number(row.fours);
+    p.sixes = Number(row.sixes);
+  }
+  for (const row of bowlingAgg) {
+    const p = ensure(row.player_id, row.display_name ?? row.full_name);
+    p.wickets = Number(row.wickets);
+    p.maidens = Number(row.maidens);
+    p.runsConceded = Number(row.runs_conceded);
+  }
+  for (const row of fieldingAgg) {
+    const p = ensure(row.player_id as string);
+    p.catches = Number(row.catches);
+    p.stumpings = Number(row.stumpings);
+    p.runOuts = Number(row.run_outs);
+  }
+
+  const all = [...players.values()];
+  const playerOfTournamentId = selectBestPerformer(
+    all.map((p) => ({
+      playerId: p.playerId,
+      runs: p.runs,
+      fours: p.fours,
+      sixes: p.sixes,
+      wickets: p.wickets,
+      maidens: p.maidens,
+      catches: p.catches,
+      stumpings: p.stumpings,
+      runOuts: p.runOuts,
+    })),
+  );
+  const playerOfTournament = playerOfTournamentId ? all.find((p) => p.playerId === playerOfTournamentId) : undefined;
+
+  const mostRuns = [...all]
+    .filter((p) => p.runs > 0)
+    .sort((a, b) => b.runs - a.runs)
+    .slice(0, 5)
+    .map((p) => ({ id: p.playerId, name: p.name, runs: p.runs, fours: p.fours, sixes: p.sixes }));
+
+  const mostWickets = [...all]
+    .filter((p) => p.wickets > 0)
+    .sort((a, b) => b.wickets - a.wickets || a.runsConceded - b.runsConceded)
+    .slice(0, 5)
+    .map((p) => ({ id: p.playerId, name: p.name, wickets: p.wickets, maidens: p.maidens }));
+
+  res.json({
+    player_of_tournament: playerOfTournament ? { id: playerOfTournament.playerId, name: playerOfTournament.name } : null,
+    most_runs: mostRuns,
+    most_wickets: mostWickets,
+  });
 });
 
 router.get('/teams/:id', async (req, res) => {

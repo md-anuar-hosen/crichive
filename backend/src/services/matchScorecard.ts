@@ -1,4 +1,5 @@
 import { db } from '../db/index';
+import { formatDismissal } from '../domain/scoring';
 import { serializeGround, serializePlayer } from '../serializers/public';
 
 /**
@@ -13,6 +14,7 @@ export async function getMatchScorecard(matchId: string) {
     .innerJoin('teams as team_b', 'team_b.id', 'matches.team_b_id')
     .innerJoin('tournaments', 'tournaments.id', 'matches.tournament_id')
     .leftJoin('grounds', 'grounds.id', 'matches.ground_id')
+    .leftJoin('players as player_of_match', 'player_of_match.id', 'matches.player_of_match_id')
     .select([
       'matches.id',
       'matches.match_number',
@@ -26,6 +28,8 @@ export async function getMatchScorecard(matchId: string) {
       'matches.win_margin_runs',
       'matches.win_margin_wickets',
       'matches.player_of_match_id',
+      'player_of_match.full_name as player_of_match_full_name',
+      'player_of_match.display_name as player_of_match_display_name',
       'tournaments.slug as tournament_slug',
       'tournaments.name as tournament_name',
       'team_a.id as team_a_id',
@@ -52,7 +56,7 @@ export async function getMatchScorecard(matchId: string) {
 
   const innings = await Promise.all(
     inningsRows.map(async (inn) => {
-      const [totals, battingRows, bowlingRows, partnershipRows, interruptionRows] = await Promise.all([
+      const [totals, battingRows, bowlingRows, partnershipRows, interruptionRows, dismissalRows] = await Promise.all([
         db.selectFrom('innings_totals').selectAll().where('innings_id', '=', inn.id).executeTakeFirst(),
         db
           .selectFrom('batting_cards')
@@ -69,7 +73,6 @@ export async function getMatchScorecard(matchId: string) {
             'batting_cards.fours',
             'batting_cards.sixes',
             'batting_cards.is_out',
-            'batting_cards.dismissal_text',
             'batting_cards.position',
           ])
           .where('batting_cards.innings_id', '=', inn.id)
@@ -118,7 +121,42 @@ export async function getMatchScorecard(matchId: string) {
           .where('innings_id', '=', inn.id)
           .orderBy('created_at', 'asc')
           .execute(),
+        db
+          .selectFrom('deliveries')
+          .innerJoin('players as bowler', 'bowler.id', 'deliveries.bowler_id')
+          .leftJoin('players as fielder', 'fielder.id', 'deliveries.fielder_id')
+          .select([
+            'deliveries.player_out_id',
+            'deliveries.wicket_kind',
+            'deliveries.bowler_id',
+            'bowler.full_name as bowler_full_name',
+            'bowler.display_name as bowler_display_name',
+            'deliveries.fielder_id',
+            'fielder.full_name as fielder_full_name',
+            'fielder.display_name as fielder_display_name',
+          ])
+          .where('deliveries.innings_id', '=', inn.id)
+          .where('deliveries.player_out_id', 'is not', null)
+          .where('deliveries.voided_at', 'is', null)
+          .orderBy('deliveries.sequence', 'asc')
+          .execute(),
       ]);
+
+      // A retired-hurt batter can return and be dismissed properly later in the
+      // same innings — ordering by sequence means the later, real dismissal
+      // wins the map entry over the earlier "retired hurt" one.
+      const dismissalTextByPlayerId = new Map(
+        dismissalRows.map((d) => [
+          d.player_out_id as string,
+          formatDismissal({
+            kind: d.wicket_kind!,
+            bowlerId: d.bowler_id,
+            bowlerName: d.bowler_display_name ?? d.bowler_full_name,
+            fielderId: d.fielder_id ?? undefined,
+            fielderName: d.fielder_display_name ?? d.fielder_full_name ?? undefined,
+          }),
+        ]),
+      );
 
       return {
         innings_number: inn.innings_number,
@@ -138,7 +176,7 @@ export async function getMatchScorecard(matchId: string) {
           fours: r.fours,
           sixes: r.sixes,
           is_out: r.is_out,
-          dismissal_text: r.dismissal_text,
+          dismissal_text: r.is_out ? (dismissalTextByPlayerId.get(r.id) ?? null) : null,
           position: r.position,
         })),
         bowling: bowlingRows.map((r) => ({
@@ -183,7 +221,9 @@ export async function getMatchScorecard(matchId: string) {
     result_note: match.result_note,
     win_margin_runs: match.win_margin_runs,
     win_margin_wickets: match.win_margin_wickets,
-    player_of_match_id: match.player_of_match_id,
+    player_of_match: match.player_of_match_id
+      ? { id: match.player_of_match_id, name: match.player_of_match_display_name ?? match.player_of_match_full_name }
+      : null,
     team_a: { id: match.team_a_id, name: match.team_a_name, short_name: match.team_a_short_name },
     team_b: { id: match.team_b_id, name: match.team_b_name, short_name: match.team_b_short_name },
     ground: match.ground_id ? serializeGround({ id: match.ground_id, name: match.ground_name!, city: match.ground_city }) : null,

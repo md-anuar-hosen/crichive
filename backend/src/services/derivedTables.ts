@@ -41,7 +41,6 @@ export async function applyScorecardToDerivedTables(trx: Kysely<DB>, inningsId: 
           fours: b.fours,
           sixes: b.sixes,
           is_out: b.isOut,
-          dismissal_text: b.dismissalKind ?? null,
           position: b.position,
         })),
       )
