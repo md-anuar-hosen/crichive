@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/api_exception.dart';
 import '../models/match_detail.dart';
+import '../models/pending_delivery.dart';
 import '../models/player.dart';
 import '../state/providers.dart';
 import '../utils/cricket_math.dart';
@@ -48,6 +49,15 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
 
   bool _submitting = false;
   String _clientEventId = generateUuidV4();
+
+  int _pendingCount = 0;
+  bool _syncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _flushQueue(widget.matchId, silent: true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +111,7 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (_pendingCount > 0) _PendingSyncBanner(count: _pendingCount, syncing: _syncing, onSyncNow: () => _flushQueue(match.id)),
         Text(
           totals == null ? '0/0 (0.0)' : '${totals.runs}/${totals.wickets} (${totals.oversDisplay(ballsPerOver)})',
           style: Theme.of(context).textTheme.headlineSmall,
@@ -238,31 +249,122 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
     return true;
   }
 
+  PendingDelivery _pendingFromForm(String matchId, int inningsNumber) => PendingDelivery(
+        matchId: matchId,
+        clientEventId: _clientEventId,
+        inningsNumber: inningsNumber,
+        strikerId: _strikerId!,
+        nonStrikerId: _nonStrikerId!,
+        bowlerId: _bowlerId!,
+        runsOffBat: _mode == _BallMode.legal || _mode == _BallMode.noBall ? _runs : 0,
+        extraWides: _mode == _BallMode.wide ? 1 + _runs : 0,
+        extraNoballs: _mode == _BallMode.noBall ? 1 : 0,
+        extraByes: _mode == _BallMode.bye ? _runs : 0,
+        extraLegbyes: _mode == _BallMode.legBye ? _runs : 0,
+        extraPenalty: 0,
+        wicketKind: _isWicket ? _wicketKind : null,
+        playerOutId: _isWicket ? _playerOutId : null,
+        fielderId: _isWicket ? _fielderId : null,
+        queuedAt: DateTime.now(),
+      );
+
+  Future<bool> _submitToServer(PendingDelivery d) async {
+    final result = await ref.read(apiClientProvider).postDelivery(
+          d.matchId,
+          clientEventId: d.clientEventId,
+          inningsNumber: d.inningsNumber,
+          strikerId: d.strikerId,
+          nonStrikerId: d.nonStrikerId,
+          bowlerId: d.bowlerId,
+          runsOffBat: d.runsOffBat,
+          extraWides: d.extraWides,
+          extraNoballs: d.extraNoballs,
+          extraByes: d.extraByes,
+          extraLegbyes: d.extraLegbyes,
+          extraPenalty: d.extraPenalty,
+          wicketKind: d.wicketKind,
+          playerOutId: d.playerOutId,
+          fielderId: d.fielderId,
+        );
+    return result.inningsComplete == true;
+  }
+
+  /// Retries whatever's queued for [matchId], oldest first, stopping the
+  /// moment one fails again (no network) so the rest stay queued in order.
+  /// A real (non-network) error on a queued item — e.g. the innings closed
+  /// under it while offline — halts the flush too rather than silently
+  /// dropping scored data; that needs a human to look at it.
+  Future<void> _flushQueue(String matchId, {bool silent = false}) async {
+    final queue = ref.read(pendingDeliveryQueueProvider);
+    var pending = await queue.all(matchId);
+    if (!mounted) return;
+    setState(() {
+      _pendingCount = pending.length;
+      if (!silent) _syncing = true;
+    });
+    if (pending.isEmpty) {
+      if (!silent && mounted) setState(() => _syncing = false);
+      return;
+    }
+
+    var syncedAny = false;
+    while (pending.isNotEmpty) {
+      try {
+        await _submitToServer(pending.first);
+        await queue.removeFirst(matchId);
+        syncedAny = true;
+        pending = pending.skip(1).toList();
+        if (mounted) setState(() => _pendingCount = pending.length);
+      } on ApiException catch (e) {
+        if (mounted && !silent) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.statusCode == null ? 'Still offline — will keep retrying.' : 'Sync stopped: ${e.message}')),
+          );
+        }
+        break;
+      }
+    }
+
+    if (mounted) setState(() => _syncing = false);
+    if (syncedAny) ref.invalidate(matchProvider(matchId));
+  }
+
   Future<void> _submit(String matchId, int inningsNumber) async {
     setState(() => _submitting = true);
+    final delivery = _pendingFromForm(matchId, inningsNumber);
     try {
-      final result = await ref.read(apiClientProvider).postDelivery(
-            matchId,
-            clientEventId: _clientEventId,
-            inningsNumber: inningsNumber,
-            strikerId: _strikerId!,
-            nonStrikerId: _nonStrikerId!,
-            bowlerId: _bowlerId!,
-            runsOffBat: _mode == _BallMode.legal || _mode == _BallMode.noBall ? _runs : 0,
-            extraWides: _mode == _BallMode.wide ? 1 + _runs : 0,
-            extraNoballs: _mode == _BallMode.noBall ? 1 : 0,
-            extraByes: _mode == _BallMode.bye ? _runs : 0,
-            extraLegbyes: _mode == _BallMode.legBye ? _runs : 0,
-            wicketKind: _isWicket ? _wicketKind : null,
-            playerOutId: _isWicket ? _playerOutId : null,
-            fielderId: _isWicket ? _fielderId : null,
-          );
-      ref.invalidate(matchProvider(matchId));
+      // Never let a fresh ball jump ahead of a backlog — flush first so
+      // delivery order to the server always matches the order they were
+      // actually scored in.
+      if (_pendingCount > 0) {
+        await _flushQueue(matchId, silent: true);
+      }
+
+      bool inningsComplete = false;
+      if (_pendingCount > 0) {
+        final queue = ref.read(pendingDeliveryQueueProvider);
+        await queue.enqueue(delivery);
+        if (mounted) setState(() => _pendingCount++);
+      } else {
+        try {
+          inningsComplete = await _submitToServer(delivery);
+          ref.invalidate(matchProvider(matchId));
+        } on ApiException catch (e) {
+          if (e.statusCode != null) rethrow; // a real server error, not a dropped connection
+          final queue = ref.read(pendingDeliveryQueueProvider);
+          await queue.enqueue(delivery);
+          if (mounted) setState(() => _pendingCount++);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Offline — ball queued, it'll sync automatically once you're back online.")),
+            );
+          }
+        }
+      }
 
       if (!mounted) return;
-      if (result.inningsComplete == true) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Innings complete: ${result.completionReason ?? ''}')));
+      if (inningsComplete) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Innings complete')));
       }
       setState(() {
         _mode = _BallMode.legal;
@@ -290,6 +392,40 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+}
+
+class _PendingSyncBanner extends StatelessWidget {
+  const _PendingSyncBanner({required this.count, required this.syncing, required this.onSyncNow});
+
+  final int count;
+  final bool syncing;
+  final VoidCallback onSyncNow;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(8)),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off, size: 18, color: scheme.onErrorContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              count == 1 ? '1 ball waiting to sync — the score above is not up to date.' : '$count balls waiting to sync — the score above is not up to date.',
+              style: TextStyle(color: scheme.onErrorContainer),
+            ),
+          ),
+          TextButton(
+            onPressed: syncing ? null : onSyncNow,
+            child: syncing ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Sync now'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

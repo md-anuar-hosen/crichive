@@ -12,8 +12,11 @@ import '../models/standing.dart';
 import '../models/team.dart';
 import '../models/tournament.dart';
 import '../models/tournament_awards.dart';
+import '../services/pending_delivery_queue.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
+
+final pendingDeliveryQueueProvider = Provider<PendingDeliveryQueue>((ref) => PendingDeliveryQueue());
 
 final tournamentsProvider = FutureProvider<Paginated<Tournament>>((ref) {
   return ref.watch(apiClientProvider).getTournaments();
