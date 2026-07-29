@@ -128,6 +128,36 @@ class Partnership {
       );
 }
 
+/// A rain/weather stoppage recorded against an innings under CricHive's own
+/// resource-based target-revision method ("CricHive Rain Rule") — NOT the
+/// licensed DLS. Never label this DLS/D-L in UI copy.
+class MatchInterruption {
+  const MatchInterruption({
+    required this.id,
+    required this.oversRemainingBefore,
+    required this.oversRemainingAfter,
+    required this.wicketsLostAt,
+    this.reason,
+    required this.createdAt,
+  });
+
+  final String id;
+  final double oversRemainingBefore;
+  final double oversRemainingAfter;
+  final int wicketsLostAt;
+  final String? reason;
+  final DateTime createdAt;
+
+  factory MatchInterruption.fromJson(Map<String, dynamic> json) => MatchInterruption(
+        id: json['id'] as String,
+        oversRemainingBefore: parseNumeric(json['overs_remaining_before']),
+        oversRemainingAfter: parseNumeric(json['overs_remaining_after']),
+        wicketsLostAt: json['wickets_lost_at'] as int,
+        reason: json['reason'] as String?,
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
+}
+
 class InningsDetail {
   const InningsDetail({
     required this.inningsNumber,
@@ -141,6 +171,7 @@ class InningsDetail {
     required this.batting,
     required this.bowling,
     required this.partnerships,
+    required this.interruptions,
   });
 
   final int inningsNumber;
@@ -154,6 +185,7 @@ class InningsDetail {
   final List<BattingCardRow> batting;
   final List<BowlingCardRow> bowling;
   final List<Partnership> partnerships;
+  final List<MatchInterruption> interruptions;
 
   factory InningsDetail.fromJson(Map<String, dynamic> json) => InningsDetail(
         inningsNumber: json['innings_number'] as int,
@@ -167,6 +199,10 @@ class InningsDetail {
         batting: (json['batting'] as List).cast<Map<String, dynamic>>().map(BattingCardRow.fromJson).toList(),
         bowling: (json['bowling'] as List).cast<Map<String, dynamic>>().map(BowlingCardRow.fromJson).toList(),
         partnerships: (json['partnerships'] as List).cast<Map<String, dynamic>>().map(Partnership.fromJson).toList(),
+        interruptions: (json['interruptions'] as List? ?? [])
+            .cast<Map<String, dynamic>>()
+            .map(MatchInterruption.fromJson)
+            .toList(),
       );
 }
 

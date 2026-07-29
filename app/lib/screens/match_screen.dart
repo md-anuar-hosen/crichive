@@ -49,6 +49,10 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
       _showAbandonDialog(context, match.id);
       return;
     }
+    if (action == 'interruption') {
+      _showInterruptionDialog(context, match);
+      return;
+    }
     Widget screen;
     switch (action) {
       case 'toss':
@@ -115,6 +119,72 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     }
   }
 
+  Future<void> _showInterruptionDialog(BuildContext context, MatchDetail match) async {
+    final openInnings = match.innings.where((i) => i.closedAt == null).lastOrNull;
+    if (openInnings == null) return;
+
+    final ballsPerOver = ref.read(tournamentProvider(match.tournamentSlug)).valueOrNull?.rules?.ballsPerOver ?? 6;
+    final legalBalls = openInnings.totals?.legalBalls ?? 0;
+    final oversRemainingBefore = openInnings.maxOvers - (legalBalls / ballsPerOver);
+
+    final oversController = TextEditingController();
+    final reasonController = TextEditingController();
+    final result = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Record rain interruption'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'CricHive Rain Rule: revises the target using a resource-based '
+              'method (not the licensed DLS). Currently ${oversRemainingBefore.toStringAsFixed(1)} overs remain.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: oversController,
+              decoration: const InputDecoration(labelText: 'Overs remaining after stoppage'),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autofocus: true,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(labelText: 'Reason (e.g. rain)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final value = double.tryParse(oversController.text.trim());
+              Navigator.of(dialogContext).pop(value);
+            },
+            child: const Text('Record'),
+          ),
+        ],
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    try {
+      await ref.read(apiClientProvider).recordInterruption(
+            match.id,
+            openInnings.inningsNumber,
+            oversRemainingAfter: result,
+            reason: reasonController.text.trim(),
+          );
+      ref.invalidate(matchProvider(match.id));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Interruption recorded, target revised')));
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final match = ref.watch(matchProvider(widget.matchId));
@@ -128,6 +198,10 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
           data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules?.ballsPerOver,
         ) ??
         6;
+    final dlsEnabled = match.whenOrNull(
+          data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules?.dlsEnabled,
+        ) ??
+        false;
 
     return Scaffold(
       appBar: AppBar(
@@ -149,6 +223,11 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
                   PopupMenuItem(value: 'xi_a', child: Text('Playing XI — ${m.teamA.label}')),
                   PopupMenuItem(value: 'xi_b', child: Text('Playing XI — ${m.teamB.label}')),
                   const PopupMenuItem(value: 'score', child: Text('Score')),
+                  if (dlsEnabled && !_finishedStatuses.contains(m.status) && m.innings.any((i) => i.closedAt == null))
+                    const PopupMenuItem(
+                      value: 'interruption',
+                      child: Text('Record rain interruption'),
+                    ),
                   if (!_finishedStatuses.contains(m.status))
                     const PopupMenuItem(
                       value: 'abandon',
@@ -257,6 +336,10 @@ class _InningsCard extends StatelessWidget {
               ],
             ),
             if (totals != null) ..._buildRateLines(context, totals, isOpen),
+            if (innings.interruptions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _InterruptionBanner(innings: innings),
+            ],
             const SizedBox(height: 12),
             if (innings.batting.isNotEmpty) ...[
               Text('Batting', style: Theme.of(context).textTheme.labelLarge),
@@ -375,5 +458,59 @@ class _InningsCard extends StatelessWidget {
     }
 
     return lines;
+  }
+}
+
+/// Shows the "CricHive Rain Rule" revised target/overs and the interruption
+/// history for an innings. Never label this "DLS"/"D/L" — see
+/// backend/src/domain/rainRule for why.
+class _InterruptionBanner extends StatelessWidget {
+  const _InterruptionBanner({required this.innings});
+  final InningsDetail innings;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final headline = innings.target != null
+        ? 'Revised target: ${innings.target} off ${innings.maxOvers.toStringAsFixed(1)} overs (CricHive Rain Rule)'
+        : 'Overs reduced to ${innings.maxOvers.toStringAsFixed(1)} (CricHive Rain Rule)';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: colors.tertiaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.umbrella_outlined, size: 16, color: colors.onTertiaryContainer),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  headline,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.onTertiaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          for (final event in innings.interruptions)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 22),
+              child: Text(
+                '${event.oversRemainingBefore.toStringAsFixed(1)} → ${event.oversRemainingAfter.toStringAsFixed(1)} overs remaining at '
+                '${event.wicketsLostAt} wkt(s)${event.reason != null && event.reason!.isNotEmpty ? ' — ${event.reason}' : ''}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.onTertiaryContainer),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
