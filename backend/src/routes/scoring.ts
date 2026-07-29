@@ -4,7 +4,7 @@ import type { Selectable } from 'kysely';
 import { z } from 'zod';
 import { db } from '../db/index';
 import type { Matches } from '../db/types';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireTournamentRole } from '../middleware/auth';
 import { requireMatchRole } from '../middleware/matchRole';
 import { buildScorecard, isNextDeliveryFreeHit, resolveMatchResult, validateDelivery } from '../domain/scoring';
 import type { Delivery } from '../domain/scoring';
@@ -717,5 +717,109 @@ router.get('/matches/:id/scorecard', async (req, res) => {
   }
   res.json(scorecard);
 });
+
+// ---------------------------------------------------------------------------
+// PATCH /tournaments/:slug/rules
+// ---------------------------------------------------------------------------
+
+/** requireTournamentRole reads req.params.tournamentId; our route is keyed by :slug. */
+async function resolveTournamentBySlug(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1], next: Parameters<typeof requireAuth>[2]) {
+  const tournament = await db.selectFrom('tournaments').select('id').where('slug', '=', param(req.params.slug)).executeTakeFirst();
+  if (!tournament) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+  req.params.tournamentId = tournament.id;
+  next();
+}
+
+const rulesSchema = z
+  .object({
+    overs_per_innings: z.number().int().min(1).max(50),
+    balls_per_over: z.number().int().min(1),
+    max_overs_per_bowler: z.number().int().min(1),
+    powerplay_overs: z.number().int().min(0),
+    players_per_side: z.number().int().min(2),
+    wide_runs: z.number().int().min(0),
+    noball_runs: z.number().int().min(0),
+    free_hit_after_noball: z.boolean(),
+    points_win: z.number().int().min(0),
+    points_tie: z.number().int().min(0),
+    points_no_result: z.number().int().min(0),
+    points_loss: z.number().int().min(0),
+    bonus_point_enabled: z.boolean(),
+    super_over_on_tie: z.boolean(),
+    dls_enabled: z.boolean(),
+  })
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
+
+router.patch(
+  '/tournaments/:slug/rules',
+  requireAuth,
+  resolveTournamentBySlug,
+  requireTournamentRole('organizer'),
+  async (req, res) => {
+    const tournamentId = req.params.tournamentId as string;
+
+    const parsed = rulesSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Validation failed', fields: zodFieldErrors(parsed.error) });
+      return;
+    }
+
+    // Rules aren't snapshotted per match -- every request re-reads them
+    // live. Changing bowler quota, overs, etc. out from under a match that
+    // is currently being scored would silently corrupt its validation, so
+    // rule edits are blocked while any match in the tournament is in
+    // progress.
+    const liveMatch = await db
+      .selectFrom('matches')
+      .select('id')
+      .where('tournament_id', '=', tournamentId)
+      .where('status', 'in', ['toss_done', 'live', 'innings_break'])
+      .executeTakeFirst();
+    if (liveMatch) {
+      res.status(409).json({ error: 'Cannot change rules while a match in this tournament is in progress' });
+      return;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(parsed.data, 'max_overs_per_bowler') || Object.prototype.hasOwnProperty.call(parsed.data, 'overs_per_innings')) {
+      const current = await db.selectFrom('tournament_rules').selectAll().where('tournament_id', '=', tournamentId).executeTakeFirstOrThrow();
+      const nextOvers = parsed.data.overs_per_innings ?? current.overs_per_innings;
+      const nextQuota = parsed.data.max_overs_per_bowler ?? current.max_overs_per_bowler;
+      if (nextQuota > nextOvers) {
+        res.status(400).json({ error: 'max_overs_per_bowler cannot exceed overs_per_innings' });
+        return;
+      }
+    }
+
+    const updated = await db.transaction().execute(async (trx) => {
+      const row = await trx
+        .updateTable('tournament_rules')
+        .set(parsed.data)
+        .where('tournament_id', '=', tournamentId)
+        .returningAll()
+        .executeTakeFirst();
+      if (!row) return null;
+
+      await writeAuditLog(trx, {
+        actorUserId: req.user!.sub,
+        entityType: 'tournament',
+        entityId: tournamentId,
+        action: 'update_rules',
+        afterState: parsed.data,
+      });
+      return row;
+    });
+
+    if (!updated) {
+      res.status(404).json({ error: 'This tournament has no rules row yet' });
+      return;
+    }
+
+    res.json({ rules: updated });
+  },
+);
 
 export default router;
