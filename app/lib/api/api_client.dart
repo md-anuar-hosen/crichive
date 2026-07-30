@@ -229,6 +229,36 @@ class ApiClient {
     await _dio.post('/matches/$matchId/innings/$inningsNumber/close');
   }
 
+  /// Test matches only. Starts innings 3 once 1 and 2 have both closed.
+  /// [enforceFollowOn] is required whenever the follow-on is available.
+  Future<void> startNextTestInnings(
+    String matchId, {
+    bool? enforceFollowOn,
+  }) async {
+    await _dio.post(
+      '/matches/$matchId/next-innings',
+      data: {'enforce_follow_on': ?enforceFollowOn},
+    );
+  }
+
+  /// Test matches only — pauses live scoring for the day.
+  Future<void> recordStumps(String matchId) async {
+    await _dio.post('/matches/$matchId/stumps');
+  }
+
+  /// Test matches only — starts the next scheduled day; 409s once
+  /// days_per_match has been used up.
+  Future<int> resumeTestPlay(String matchId) async {
+    final res = await _dio.post('/matches/$matchId/resume-play');
+    return (res.data as Map<String, dynamic>)['day'] as int;
+  }
+
+  /// Test matches only — the organiser explicitly ends the match with no
+  /// result; the app never infers a draw from elapsed time on its own.
+  Future<void> drawMatch(String matchId) async {
+    await _dio.post('/matches/$matchId/draw');
+  }
+
   Future<void> abandonMatch(String matchId, {required String reason}) async {
     await _dio.post('/matches/$matchId/abandon', data: {'reason': reason});
   }
@@ -376,8 +406,11 @@ class ApiClient {
     required String name,
     required String slug,
     required int seasonYear,
-    required int oversPerInnings,
-    required int maxOversPerBowler,
+    String matchType = 'limited_overs',
+    int? oversPerInnings,
+    int? maxOversPerBowler,
+    int? daysPerMatch,
+    int? followOnMargin,
     String? organizerOrg,
     String? ball,
   }) async {
@@ -387,8 +420,11 @@ class ApiClient {
         'name': name,
         'slug': slug,
         'season_year': seasonYear,
-        'overs_per_innings': oversPerInnings,
-        'max_overs_per_bowler': maxOversPerBowler,
+        'match_type': matchType,
+        'overs_per_innings': ?oversPerInnings,
+        'max_overs_per_bowler': ?maxOversPerBowler,
+        'days_per_match': ?daysPerMatch,
+        'follow_on_margin': ?followOnMargin,
         'organizer_org': ?organizerOrg,
         'ball': ?ball,
       },

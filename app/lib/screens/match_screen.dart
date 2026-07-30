@@ -68,6 +68,22 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
       _showInterruptionDialog(context, match);
       return;
     }
+    if (action == 'follow_on') {
+      _showFollowOnDialog(context, match);
+      return;
+    }
+    if (action == 'stumps') {
+      _recordStumps(context, match.id);
+      return;
+    }
+    if (action == 'resume_play') {
+      _resumePlay(context, match.id);
+      return;
+    }
+    if (action == 'draw') {
+      _showDrawDialog(context, match.id);
+      return;
+    }
     Widget screen;
     switch (action) {
       case 'toss':
@@ -299,7 +315,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
         6;
     final legalBalls = openInnings.totals?.legalBalls ?? 0;
     final oversRemainingBefore =
-        openInnings.maxOvers - (legalBalls / ballsPerOver);
+        (openInnings.maxOvers ?? 0) - (legalBalls / ballsPerOver);
 
     final oversController = TextEditingController();
     final reasonController = TextEditingController();
@@ -374,6 +390,124 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     }
   }
 
+  /// Test matches only — asks the organiser whether to enforce the
+  /// follow-on now that it's available (see [MatchDetail.followOnAvailable]).
+  Future<void> _showFollowOnDialog(
+    BuildContext context,
+    MatchDetail match,
+  ) async {
+    final enforce = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Follow-on available'),
+        content: const Text(
+          'The side that bowled second may enforce the follow-on, making the '
+          'other side bat again immediately. Otherwise, play continues in the '
+          'normal order.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Bat again normally'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Enforce follow-on'),
+          ),
+        ],
+      ),
+    );
+    if (enforce == null || !mounted) return;
+
+    try {
+      await ref
+          .read(apiClientProvider)
+          .startNextTestInnings(match.id, enforceFollowOn: enforce);
+      ref.invalidate(matchProvider(match.id));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(enforce ? 'Follow-on enforced' : 'Innings 3 started'),
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _recordStumps(BuildContext context, String matchId) async {
+    try {
+      await ref.read(apiClientProvider).recordStumps(matchId);
+      ref.invalidate(matchProvider(matchId));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Stumps — play paused for the day')),
+      );
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _resumePlay(BuildContext context, String matchId) async {
+    try {
+      final day = await ref.read(apiClientProvider).resumeTestPlay(matchId);
+      ref.invalidate(matchProvider(matchId));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Day $day underway')));
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _showDrawDialog(BuildContext context, String matchId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('End match as a draw'),
+        content: const Text(
+          'Ends the match now with no result — the app never infers a draw '
+          'from elapsed time on its own. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('End as draw'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await ref.read(apiClientProvider).drawMatch(matchId);
+      ref.invalidate(matchProvider(matchId));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Match drawn')));
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final match = ref.watch(matchProvider(widget.matchId));
@@ -411,6 +545,15 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
               ?.playersPerSide,
         ) ??
         11;
+    final isTest =
+        match.whenOrNull(
+          data: (m) => ref
+              .watch(tournamentProvider(m.tournamentSlug))
+              .valueOrNull
+              ?.rules
+              ?.isTest,
+        ) ??
+        false;
 
     return Scaffold(
       appBar: AppBar(
@@ -444,6 +587,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
                       ),
                       const PopupMenuItem(value: 'score', child: Text('Score')),
                       if (dlsEnabled &&
+                          !isTest &&
                           !_finishedStatuses.contains(m.status) &&
                           m.innings.any(
                             (i) => i.closedAt == null && !i.isSuperOver,
@@ -451,6 +595,34 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
                         const PopupMenuItem(
                           value: 'interruption',
                           child: Text('Record rain interruption'),
+                        ),
+                      if (isTest && m.followOnAvailable)
+                        const PopupMenuItem(
+                          value: 'follow_on',
+                          child: Text('Start innings 3 / follow-on'),
+                        ),
+                      if (isTest &&
+                          [
+                            'toss_done',
+                            'live',
+                            'innings_break',
+                          ].contains(m.status))
+                        PopupMenuItem(
+                          value: 'stumps',
+                          child: Text('Stumps — end day ${m.currentDay}'),
+                        ),
+                      if (isTest && m.status == 'day_break')
+                        const PopupMenuItem(
+                          value: 'resume_play',
+                          child: Text('Resume play (next day)'),
+                        ),
+                      if (isTest && !_finishedStatuses.contains(m.status))
+                        const PopupMenuItem(
+                          value: 'draw',
+                          child: Text(
+                            'End as draw',
+                            style: TextStyle(color: Colors.red),
+                          ),
                         ),
                       if (!_finishedStatuses.contains(m.status))
                         const PopupMenuItem(
@@ -522,6 +694,15 @@ class _MatchBody extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(_headerSubtitle(), style: Theme.of(context).textTheme.bodyMedium),
+        if (match.matchType == 'test') ...[
+          const SizedBox(height: 2),
+          Text(
+            match.daysPerMatch == null
+                ? 'Day ${match.currentDay}'
+                : 'Day ${match.currentDay} of ${match.daysPerMatch}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
         if (_tossLine() != null) ...[
           const SizedBox(height: 4),
           Text(_tossLine()!, style: Theme.of(context).textTheme.bodySmall),
@@ -766,24 +947,25 @@ class _InningsCard extends StatelessWidget {
     final crr = runRate(totals.runs, totals.legalBalls, ballsPerOver);
     final lines = <Widget>[Text('CRR ${crr.toStringAsFixed(2)}', style: style)];
 
+    final maxOvers = innings.maxOvers;
     if (innings.target != null) {
-      if (isOpen) {
+      if (isOpen && maxOvers != null) {
         final rrr = requiredRunRate(
           target: innings.target!,
           runsSoFar: totals.runs,
           legalBallsBowled: totals.legalBalls,
-          maxOvers: innings.maxOvers,
+          maxOvers: maxOvers,
           ballsPerOver: ballsPerOver,
         );
         if (rrr != null && innings.target! - totals.runs > 0) {
           lines.add(Text('RRR ${rrr.toStringAsFixed(2)}', style: style));
         }
       }
-    } else if (isOpen) {
+    } else if (isOpen && maxOvers != null) {
       final projected = projectedScore(
         runsSoFar: totals.runs,
         legalBallsBowled: totals.legalBalls,
-        maxOvers: innings.maxOvers,
+        maxOvers: maxOvers,
         ballsPerOver: ballsPerOver,
       );
       lines.add(Text('Projected $projected', style: style));
@@ -792,20 +974,31 @@ class _InningsCard extends StatelessWidget {
     return lines;
   }
 
-  /// The bold red "{Team} need N runs in M balls" headline, Cricbuzz-style.
+  /// The bold red "{Team} need N runs [in M balls]" headline, Cricbuzz-style.
+  /// A Test's deciding innings has a target but no overs cap, so it drops
+  /// the "in M balls" clause rather than computing a nonsensical remainder.
   List<Widget> _buildChaseHeadline(BuildContext context, InningsTotals totals) {
     if (innings.target == null) return const [];
-    final remaining = ballsRemaining(
-      maxOvers: innings.maxOvers,
-      ballsPerOver: ballsPerOver,
-      legalBallsBowled: totals.legalBalls,
-    );
     final runsNeeded = innings.target! - totals.runs;
-    if (remaining <= 0 || runsNeeded <= 0) return const [];
+    if (runsNeeded <= 0) return const [];
+    final maxOvers = innings.maxOvers;
+    final needText = maxOvers == null
+        ? '${_teamName(innings.battingTeamId)} need $runsNeeded runs'
+        : (() {
+            final remaining = ballsRemaining(
+              maxOvers: maxOvers,
+              ballsPerOver: ballsPerOver,
+              legalBallsBowled: totals.legalBalls,
+            );
+            return remaining <= 0
+                ? null
+                : '${_teamName(innings.battingTeamId)} need $runsNeeded runs in $remaining balls';
+          })();
+    if (needText == null) return const [];
     return [
       const SizedBox(height: 4),
       Text(
-        '${_teamName(innings.battingTeamId)} need $runsNeeded runs in $remaining balls',
+        needText,
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
           color: Colors.red.shade700,
           fontWeight: FontWeight.bold,
@@ -816,14 +1009,18 @@ class _InningsCard extends StatelessWidget {
 
   /// "CricHive Win Predictor" — our own simplified heuristic (required vs.
   /// current run rate, discounted by wickets in hand), not a statistical
-  /// model. Only shown once there's enough data for it to mean anything.
+  /// model. Only shown once there's enough data for it to mean anything —
+  /// and only for a limited-overs chase, since it needs an overs cap.
   List<Widget> _buildWinProbability(
     BuildContext context,
     InningsTotals totals,
   ) {
-    if (innings.target == null || totals.legalBalls == 0) return const [];
+    final maxOvers = innings.maxOvers;
+    if (innings.target == null || totals.legalBalls == 0 || maxOvers == null) {
+      return const [];
+    }
     final remaining = ballsRemaining(
-      maxOvers: innings.maxOvers,
+      maxOvers: maxOvers,
       ballsPerOver: ballsPerOver,
       legalBallsBowled: totals.legalBalls,
     );
@@ -834,7 +1031,7 @@ class _InningsCard extends StatelessWidget {
       target: innings.target!,
       runsSoFar: totals.runs,
       legalBallsBowled: totals.legalBalls,
-      maxOvers: innings.maxOvers,
+      maxOvers: maxOvers,
       ballsPerOver: ballsPerOver,
     );
     if (rrr == null) return const [];
@@ -1198,9 +1395,12 @@ class _InterruptionBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    // Only ever shown for a limited-overs innings (the Rain Rule doesn't
+    // apply to Test matches), so maxOvers is always set in practice.
+    final maxOvers = innings.maxOvers ?? 0;
     final headline = innings.target != null
-        ? 'Revised target: ${innings.target} off ${innings.maxOvers.toStringAsFixed(1)} overs (CricHive Rain Rule)'
-        : 'Overs reduced to ${innings.maxOvers.toStringAsFixed(1)} (CricHive Rain Rule)';
+        ? 'Revised target: ${innings.target} off ${maxOvers.toStringAsFixed(1)} overs (CricHive Rain Rule)'
+        : 'Overs reduced to ${maxOvers.toStringAsFixed(1)} (CricHive Rain Rule)';
 
     return Container(
       width: double.infinity,

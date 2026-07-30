@@ -3,7 +3,12 @@ import 'json_utils.dart';
 import 'team.dart';
 
 class InningsTotals {
-  const InningsTotals({required this.runs, required this.wickets, required this.legalBalls, required this.extras});
+  const InningsTotals({
+    required this.runs,
+    required this.wickets,
+    required this.legalBalls,
+    required this.extras,
+  });
 
   final int runs;
   final int wickets;
@@ -11,13 +16,14 @@ class InningsTotals {
   final int extras;
 
   factory InningsTotals.fromJson(Map<String, dynamic> json) => InningsTotals(
-        runs: json['runs'] as int,
-        wickets: json['wickets'] as int,
-        legalBalls: json['legal_balls'] as int,
-        extras: json['extras'] as int,
-      );
+    runs: json['runs'] as int,
+    wickets: json['wickets'] as int,
+    legalBalls: json['legal_balls'] as int,
+    extras: json['extras'] as int,
+  );
 
-  String oversDisplay(int ballsPerOver) => formatOvers(legalBalls, ballsPerOver);
+  String oversDisplay(int ballsPerOver) =>
+      formatOvers(legalBalls, ballsPerOver);
 }
 
 class BattingCardRow {
@@ -44,16 +50,16 @@ class BattingCardRow {
   final int position;
 
   factory BattingCardRow.fromJson(Map<String, dynamic> json) => BattingCardRow(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        runs: json['runs'] as int,
-        ballsFaced: json['balls_faced'] as int,
-        fours: json['fours'] as int,
-        sixes: json['sixes'] as int,
-        isOut: json['is_out'] as bool,
-        dismissalText: json['dismissal_text'] as String?,
-        position: json['position'] as int,
-      );
+    id: json['id'] as String,
+    name: json['name'] as String,
+    runs: json['runs'] as int,
+    ballsFaced: json['balls_faced'] as int,
+    fours: json['fours'] as int,
+    sixes: json['sixes'] as int,
+    isOut: json['is_out'] as bool,
+    dismissalText: json['dismissal_text'] as String?,
+    position: json['position'] as int,
+  );
 
   double get strikeRate => ballsFaced == 0 ? 0 : (runs / ballsFaced) * 100;
 }
@@ -82,19 +88,21 @@ class BowlingCardRow {
   final int dots;
 
   factory BowlingCardRow.fromJson(Map<String, dynamic> json) => BowlingCardRow(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        legalBalls: json['legal_balls'] as int,
-        runsConceded: json['runs_conceded'] as int,
-        wickets: json['wickets'] as int,
-        maidens: json['maidens'] as int,
-        wides: json['wides'] as int,
-        noballs: json['noballs'] as int,
-        dots: json['dots'] as int,
-      );
+    id: json['id'] as String,
+    name: json['name'] as String,
+    legalBalls: json['legal_balls'] as int,
+    runsConceded: json['runs_conceded'] as int,
+    wickets: json['wickets'] as int,
+    maidens: json['maidens'] as int,
+    wides: json['wides'] as int,
+    noballs: json['noballs'] as int,
+    dots: json['dots'] as int,
+  );
 
-  String oversDisplay(int ballsPerOver) => formatOvers(legalBalls, ballsPerOver);
-  double economy(int ballsPerOver) => runRate(runsConceded, legalBalls, ballsPerOver);
+  String oversDisplay(int ballsPerOver) =>
+      formatOvers(legalBalls, ballsPerOver);
+  double economy(int ballsPerOver) =>
+      runRate(runsConceded, legalBalls, ballsPerOver);
 }
 
 class PartnershipPlayerRef {
@@ -104,7 +112,10 @@ class PartnershipPlayerRef {
   final String name;
 
   factory PartnershipPlayerRef.fromJson(Map<String, dynamic> json) =>
-      PartnershipPlayerRef(id: json['id'] as String, name: json['name'] as String);
+      PartnershipPlayerRef(
+        id: json['id'] as String,
+        name: json['name'] as String,
+      );
 }
 
 class Partnership {
@@ -123,12 +134,16 @@ class Partnership {
   final PartnershipPlayerRef playerB;
 
   factory Partnership.fromJson(Map<String, dynamic> json) => Partnership(
-        wicketNumber: json['wicket_number'] as int,
-        runs: json['runs'] as int,
-        balls: json['balls'] as int,
-        playerA: PartnershipPlayerRef.fromJson(json['player_a'] as Map<String, dynamic>),
-        playerB: PartnershipPlayerRef.fromJson(json['player_b'] as Map<String, dynamic>),
-      );
+    wicketNumber: json['wicket_number'] as int,
+    runs: json['runs'] as int,
+    balls: json['balls'] as int,
+    playerA: PartnershipPlayerRef.fromJson(
+      json['player_a'] as Map<String, dynamic>,
+    ),
+    playerB: PartnershipPlayerRef.fromJson(
+      json['player_b'] as Map<String, dynamic>,
+    ),
+  );
 }
 
 /// A rain/weather stoppage recorded against an innings under CricHive's own
@@ -151,7 +166,8 @@ class MatchInterruption {
   final String? reason;
   final DateTime createdAt;
 
-  factory MatchInterruption.fromJson(Map<String, dynamic> json) => MatchInterruption(
+  factory MatchInterruption.fromJson(Map<String, dynamic> json) =>
+      MatchInterruption(
         id: json['id'] as String,
         oversRemainingBefore: parseNumeric(json['overs_remaining_before']),
         oversRemainingAfter: parseNumeric(json['overs_remaining_after']),
@@ -169,6 +185,7 @@ class InningsDetail {
     required this.isSuperOver,
     this.target,
     required this.maxOvers,
+    required this.declared,
     this.closedAt,
     this.totals,
     required this.batting,
@@ -182,7 +199,12 @@ class InningsDetail {
   final String bowlingTeamId;
   final bool isSuperOver;
   final int? target;
-  final double maxOvers;
+
+  /// Null for a Test innings — no overs cap.
+  final double? maxOvers;
+
+  /// Only meaningful for a Test innings: closed before all-out/target reached.
+  final bool declared;
   final DateTime? closedAt;
   final InningsTotals? totals;
   final List<BattingCardRow> batting;
@@ -191,22 +213,38 @@ class InningsDetail {
   final List<MatchInterruption> interruptions;
 
   factory InningsDetail.fromJson(Map<String, dynamic> json) => InningsDetail(
-        inningsNumber: json['innings_number'] as int,
-        battingTeamId: json['batting_team_id'] as String,
-        bowlingTeamId: json['bowling_team_id'] as String,
-        isSuperOver: json['is_super_over'] as bool,
-        target: json['target'] as int?,
-        maxOvers: parseNumeric(json['max_overs']),
-        closedAt: json['closed_at'] == null ? null : DateTime.parse(json['closed_at'] as String),
-        totals: json['totals'] == null ? null : InningsTotals.fromJson(json['totals'] as Map<String, dynamic>),
-        batting: (json['batting'] as List).cast<Map<String, dynamic>>().map(BattingCardRow.fromJson).toList(),
-        bowling: (json['bowling'] as List).cast<Map<String, dynamic>>().map(BowlingCardRow.fromJson).toList(),
-        partnerships: (json['partnerships'] as List).cast<Map<String, dynamic>>().map(Partnership.fromJson).toList(),
-        interruptions: (json['interruptions'] as List? ?? [])
-            .cast<Map<String, dynamic>>()
-            .map(MatchInterruption.fromJson)
-            .toList(),
-      );
+    inningsNumber: json['innings_number'] as int,
+    battingTeamId: json['batting_team_id'] as String,
+    bowlingTeamId: json['bowling_team_id'] as String,
+    isSuperOver: json['is_super_over'] as bool,
+    target: json['target'] as int?,
+    maxOvers: json['max_overs'] == null
+        ? null
+        : parseNumeric(json['max_overs']),
+    declared: json['declared'] as bool? ?? false,
+    closedAt: json['closed_at'] == null
+        ? null
+        : DateTime.parse(json['closed_at'] as String),
+    totals: json['totals'] == null
+        ? null
+        : InningsTotals.fromJson(json['totals'] as Map<String, dynamic>),
+    batting: (json['batting'] as List)
+        .cast<Map<String, dynamic>>()
+        .map(BattingCardRow.fromJson)
+        .toList(),
+    bowling: (json['bowling'] as List)
+        .cast<Map<String, dynamic>>()
+        .map(BowlingCardRow.fromJson)
+        .toList(),
+    partnerships: (json['partnerships'] as List)
+        .cast<Map<String, dynamic>>()
+        .map(Partnership.fromJson)
+        .toList(),
+    interruptions: (json['interruptions'] as List? ?? [])
+        .cast<Map<String, dynamic>>()
+        .map(MatchInterruption.fromJson)
+        .toList(),
+  );
 }
 
 class MatchDetail {
@@ -218,6 +256,10 @@ class MatchDetail {
     this.scheduledStart,
     this.actualStart,
     required this.status,
+    required this.matchType,
+    required this.currentDay,
+    this.daysPerMatch,
+    required this.followOnAvailable,
     this.tossDecision,
     this.tossWinnerId,
     this.result,
@@ -238,6 +280,15 @@ class MatchDetail {
   final DateTime? scheduledStart;
   final DateTime? actualStart;
   final String status;
+
+  /// 'limited_overs' or 'test'.
+  final String matchType;
+  final int currentDay;
+  final int? daysPerMatch;
+
+  /// True only right at the innings 2 -> 3 transition of a Test match, when
+  /// the side that bowled second may enforce a follow-on.
+  final bool followOnAvailable;
   final String? tossDecision;
   final String? tossWinnerId;
   final String? result;
@@ -251,27 +302,49 @@ class MatchDetail {
   final List<InningsDetail> innings;
 
   factory MatchDetail.fromJson(Map<String, dynamic> json) => MatchDetail(
-        id: json['id'] as String,
-        matchNumber: json['match_number'] as int,
-        tournamentSlug: (json['tournament'] as Map<String, dynamic>)['slug'] as String,
-        tournamentName: (json['tournament'] as Map<String, dynamic>)['name'] as String,
-        scheduledStart: json['scheduled_start'] == null ? null : DateTime.parse(json['scheduled_start'] as String),
-        actualStart: json['actual_start'] == null ? null : DateTime.parse(json['actual_start'] as String),
-        status: json['status'] as String,
-        tossDecision: json['toss_decision'] as String?,
-        tossWinnerId: json['toss_winner_id'] as String?,
-        result: json['result'] as String?,
-        resultNote: json['result_note'] as String?,
-        winMarginRuns: json['win_margin_runs'] as int?,
-        winMarginWickets: json['win_margin_wickets'] as int?,
-        playerOfMatch: json['player_of_match'] == null
-            ? null
-            : PartnershipPlayerRef.fromJson(json['player_of_match'] as Map<String, dynamic>),
-        teamA: TeamRef.fromJson(json['team_a'] as Map<String, dynamic>),
-        teamB: TeamRef.fromJson(json['team_b'] as Map<String, dynamic>),
-        ground: json['ground'] == null ? null : GroundRef.fromJson(json['ground'] as Map<String, dynamic>),
-        innings: (json['innings'] as List).cast<Map<String, dynamic>>().map(InningsDetail.fromJson).toList(),
-      );
+    id: json['id'] as String,
+    matchNumber: json['match_number'] as int,
+    tournamentSlug:
+        (json['tournament'] as Map<String, dynamic>)['slug'] as String,
+    tournamentName:
+        (json['tournament'] as Map<String, dynamic>)['name'] as String,
+    scheduledStart: json['scheduled_start'] == null
+        ? null
+        : DateTime.parse(json['scheduled_start'] as String),
+    actualStart: json['actual_start'] == null
+        ? null
+        : DateTime.parse(json['actual_start'] as String),
+    status: json['status'] as String,
+    matchType: json['match_type'] as String? ?? 'limited_overs',
+    currentDay: json['current_day'] as int? ?? 1,
+    daysPerMatch: json['days_per_match'] as int?,
+    followOnAvailable: json['follow_on_available'] as bool? ?? false,
+    tossDecision: json['toss_decision'] as String?,
+    tossWinnerId: json['toss_winner_id'] as String?,
+    result: json['result'] as String?,
+    resultNote: json['result_note'] as String?,
+    winMarginRuns: json['win_margin_runs'] as int?,
+    winMarginWickets: json['win_margin_wickets'] as int?,
+    playerOfMatch: json['player_of_match'] == null
+        ? null
+        : PartnershipPlayerRef.fromJson(
+            json['player_of_match'] as Map<String, dynamic>,
+          ),
+    teamA: TeamRef.fromJson(json['team_a'] as Map<String, dynamic>),
+    teamB: TeamRef.fromJson(json['team_b'] as Map<String, dynamic>),
+    ground: json['ground'] == null
+        ? null
+        : GroundRef.fromJson(json['ground'] as Map<String, dynamic>),
+    innings: (json['innings'] as List)
+        .cast<Map<String, dynamic>>()
+        .map(InningsDetail.fromJson)
+        .toList(),
+  );
 
-  bool get isLive => status == 'live' || status == 'innings_break' || status == 'toss_done' || status == 'super_over';
+  bool get isLive =>
+      status == 'live' ||
+      status == 'innings_break' ||
+      status == 'toss_done' ||
+      status == 'super_over' ||
+      status == 'day_break';
 }

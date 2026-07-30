@@ -21,7 +21,9 @@ class TournamentRulesScreen extends ConsumerWidget {
         value: tournament,
         onRetry: () => ref.invalidate(tournamentProvider(tournamentSlug)),
         data: (context, t) => t.rules == null
-            ? const EmptyState(message: 'This tournament has no rules configured yet.')
+            ? const EmptyState(
+                message: 'This tournament has no rules configured yet.',
+              )
             : _RulesForm(tournamentSlug: tournamentSlug, rules: t.rules!),
       ),
     );
@@ -46,28 +48,40 @@ class _RulesFormState extends ConsumerState<_RulesForm> {
   late bool _dlsEnabled;
   bool _saving = false;
 
-  static const _intFields = {
-    'overs_per_innings': 'Overs per innings',
-    'balls_per_over': 'Balls per over',
-    'max_overs_per_bowler': 'Max overs per bowler',
-    'powerplay_overs': 'Powerplay overs',
-    'players_per_side': 'Players per side',
-    'wide_runs': 'Wide runs',
-    'noball_runs': 'No-ball runs',
-    'points_win': 'Points — win',
-    'points_tie': 'Points — tie',
-    'points_no_result': 'Points — no result',
-    'points_loss': 'Points — loss',
-  };
+  late final Map<String, String> _intFields;
 
   @override
   void initState() {
     super.initState();
     final r = widget.rules;
+    // A Test match has no overs cap or bowler quota, so those two fields
+    // don't apply to it — editing them as plain ints would try to overwrite
+    // their null value with garbage. Follow-on margin only applies to Test.
+    _intFields = {
+      if (!r.isTest) 'overs_per_innings': 'Overs per innings',
+      'balls_per_over': 'Balls per over',
+      if (!r.isTest) 'max_overs_per_bowler': 'Max overs per bowler',
+      'powerplay_overs': 'Powerplay overs',
+      'players_per_side': 'Players per side',
+      'wide_runs': 'Wide runs',
+      'noball_runs': 'No-ball runs',
+      'points_win': 'Points — win',
+      'points_tie': 'Points — tie',
+      'points_no_result': 'Points — no result',
+      'points_loss': 'Points — loss',
+      'points_draw': 'Points — draw',
+      if (r.isTest) 'follow_on_margin': 'Follow-on margin (runs)',
+    };
     _controllers = {
-      'overs_per_innings': TextEditingController(text: '${r.oversPerInnings}'),
+      if (!r.isTest)
+        'overs_per_innings': TextEditingController(
+          text: '${r.oversPerInnings}',
+        ),
       'balls_per_over': TextEditingController(text: '${r.ballsPerOver}'),
-      'max_overs_per_bowler': TextEditingController(text: '${r.maxOversPerBowler}'),
+      if (!r.isTest)
+        'max_overs_per_bowler': TextEditingController(
+          text: '${r.maxOversPerBowler}',
+        ),
       'powerplay_overs': TextEditingController(text: '${r.powerplayOvers}'),
       'players_per_side': TextEditingController(text: '${r.playersPerSide}'),
       'wide_runs': TextEditingController(text: '${r.wideRuns}'),
@@ -76,6 +90,9 @@ class _RulesFormState extends ConsumerState<_RulesForm> {
       'points_tie': TextEditingController(text: '${r.pointsTie}'),
       'points_no_result': TextEditingController(text: '${r.pointsNoResult}'),
       'points_loss': TextEditingController(text: '${r.pointsLoss}'),
+      'points_draw': TextEditingController(text: '${r.pointsDraw}'),
+      if (r.isTest)
+        'follow_on_margin': TextEditingController(text: '${r.followOnMargin}'),
     };
     _freeHitAfterNoball = r.freeHitAfterNoball;
     _bonusPointEnabled = r.bonusPointEnabled;
@@ -103,7 +120,9 @@ class _RulesFormState extends ConsumerState<_RulesForm> {
               controller: _controllers[entry.key],
               decoration: InputDecoration(labelText: entry.value),
               keyboardType: TextInputType.number,
-              validator: (v) => (v == null || int.tryParse(v) == null) ? 'Enter a whole number' : null,
+              validator: (v) => (v == null || int.tryParse(v) == null)
+                  ? 'Enter a whole number'
+                  : null,
             ),
             const SizedBox(height: 12),
           ],
@@ -128,7 +147,9 @@ class _RulesFormState extends ConsumerState<_RulesForm> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('CricHive Rain Rule enabled'),
-            subtitle: const Text('Revises the target after a rain interruption. Not the official DLS method.'),
+            subtitle: const Text(
+              'Revises the target after a rain interruption. Not the official DLS method.',
+            ),
             value: _dlsEnabled,
             onChanged: (v) => setState(() => _dlsEnabled = v),
           ),
@@ -136,7 +157,11 @@ class _RulesFormState extends ConsumerState<_RulesForm> {
           FilledButton(
             onPressed: _saving ? null : _save,
             child: _saving
-                ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text('Save rules'),
           ),
         ],
@@ -149,19 +174,26 @@ class _RulesFormState extends ConsumerState<_RulesForm> {
     setState(() => _saving = true);
     try {
       final fields = <String, dynamic>{
-        for (final key in _intFields.keys) key: int.parse(_controllers[key]!.text),
+        for (final key in _intFields.keys)
+          key: int.parse(_controllers[key]!.text),
         'free_hit_after_noball': _freeHitAfterNoball,
         'bonus_point_enabled': _bonusPointEnabled,
         'super_over_on_tie': _superOverOnTie,
         'dls_enabled': _dlsEnabled,
       };
-      await ref.read(apiClientProvider).updateTournamentRules(widget.tournamentSlug, fields);
+      await ref
+          .read(apiClientProvider)
+          .updateTournamentRules(widget.tournamentSlug, fields);
       ref.invalidate(tournamentProvider(widget.tournamentSlug));
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rules saved')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Rules saved')));
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

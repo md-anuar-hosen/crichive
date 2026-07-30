@@ -78,7 +78,10 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
   @override
   Widget build(BuildContext context) {
     final match = ref.watch(matchProvider(widget.matchId));
-    final rules = match.whenOrNull(data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules);
+    final rules = match.whenOrNull(
+      data: (m) =>
+          ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules,
+    );
     final ballsPerOver = rules?.ballsPerOver ?? 6;
     _wideRuns = rules?.wideRuns ?? 1;
     _noballRuns = rules?.noballRuns ?? 1;
@@ -89,25 +92,50 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
         value: match,
         onRetry: () => ref.invalidate(matchProvider(widget.matchId)),
         data: (context, m) {
-          final openInnings = m.innings.where((i) => i.closedAt == null).toList();
+          final openInnings = m.innings
+              .where((i) => i.closedAt == null)
+              .toList();
           if (openInnings.isEmpty) {
             return const EmptyState(
-              message: 'No open innings. Record the toss first, or start the next innings by closing the current one.',
+              message:
+                  'No open innings. Record the toss first, or start the next innings by closing the current one.',
               icon: Icons.sports_cricket_outlined,
             );
           }
           final innings = openInnings.first;
-          final battingTeam = innings.battingTeamId == m.teamA.id ? m.teamA : m.teamB;
-          final bowlingTeam = innings.battingTeamId == m.teamA.id ? m.teamB : m.teamA;
+          final battingTeam = innings.battingTeamId == m.teamA.id
+              ? m.teamA
+              : m.teamB;
+          final bowlingTeam = innings.battingTeamId == m.teamA.id
+              ? m.teamB
+              : m.teamA;
 
-          final battingSquad = ref.watch(squadProvider((teamId: battingTeam.id, tournamentSlug: m.tournamentSlug)));
-          final bowlingSquad = ref.watch(squadProvider((teamId: bowlingTeam.id, tournamentSlug: m.tournamentSlug)));
+          final battingSquad = ref.watch(
+            squadProvider((
+              teamId: battingTeam.id,
+              tournamentSlug: m.tournamentSlug,
+            )),
+          );
+          final bowlingSquad = ref.watch(
+            squadProvider((
+              teamId: bowlingTeam.id,
+              tournamentSlug: m.tournamentSlug,
+            )),
+          );
 
           return AsyncValueView(
             value: battingSquad,
             data: (context, batting) => AsyncValueView(
               value: bowlingSquad,
-              data: (context, bowling) => _buildForm(context, m, innings, batting, bowling, ballsPerOver),
+              data: (context, bowling) => _buildForm(
+                context,
+                m,
+                innings,
+                batting,
+                bowling,
+                ballsPerOver,
+                rules?.isTest ?? false,
+              ),
             ),
           );
         },
@@ -122,18 +150,34 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
     List<SquadPlayer> battingSquad,
     List<SquadPlayer> bowlingSquad,
     int ballsPerOver,
+    bool isTest,
   ) {
     final totals = innings.totals;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        if (_pendingCount > 0) _PendingSyncBanner(count: _pendingCount, syncing: _syncing, onSyncNow: () => _flushQueue(match.id)),
+        if (_pendingCount > 0)
+          _PendingSyncBanner(
+            count: _pendingCount,
+            syncing: _syncing,
+            onSyncNow: () => _flushQueue(match.id),
+          ),
         Text(
-          totals == null ? '0/0 (0.0)' : '${totals.runs}/${totals.wickets} (${totals.oversDisplay(ballsPerOver)})',
+          totals == null
+              ? '0/0 (0.0)'
+              : '${totals.runs}/${totals.wickets} (${totals.oversDisplay(ballsPerOver)})',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
-        Text('Innings ${innings.inningsNumber}', style: Theme.of(context).textTheme.bodySmall),
-        if (totals != null) _RateLine(innings: innings, totals: totals, ballsPerOver: ballsPerOver),
+        Text(
+          'Innings ${innings.inningsNumber}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        if (totals != null)
+          _RateLine(
+            innings: innings,
+            totals: totals,
+            ballsPerOver: ballsPerOver,
+          ),
         const SizedBox(height: 16),
         Row(
           children: [
@@ -151,10 +195,10 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
               onPressed: (_strikerId == null || _nonStrikerId == null)
                   ? null
                   : () => setState(() {
-                        final tmp = _strikerId;
-                        _strikerId = _nonStrikerId;
-                        _nonStrikerId = tmp;
-                      }),
+                      final tmp = _strikerId;
+                      _strikerId = _nonStrikerId;
+                      _nonStrikerId = tmp;
+                    }),
             ),
             Expanded(
               child: _PlayerDropdown(
@@ -179,11 +223,31 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
         Wrap(
           spacing: 8,
           children: [
-            ChoiceChip(label: const Text('Legal'), selected: _mode == _BallMode.legal, onSelected: (_) => setState(() => _mode = _BallMode.legal)),
-            ChoiceChip(label: const Text('Wide'), selected: _mode == _BallMode.wide, onSelected: (_) => setState(() => _mode = _BallMode.wide)),
-            ChoiceChip(label: const Text('No ball'), selected: _mode == _BallMode.noBall, onSelected: (_) => setState(() => _mode = _BallMode.noBall)),
-            ChoiceChip(label: const Text('Bye'), selected: _mode == _BallMode.bye, onSelected: (_) => setState(() => _mode = _BallMode.bye)),
-            ChoiceChip(label: const Text('Leg bye'), selected: _mode == _BallMode.legBye, onSelected: (_) => setState(() => _mode = _BallMode.legBye)),
+            ChoiceChip(
+              label: const Text('Legal'),
+              selected: _mode == _BallMode.legal,
+              onSelected: (_) => setState(() => _mode = _BallMode.legal),
+            ),
+            ChoiceChip(
+              label: const Text('Wide'),
+              selected: _mode == _BallMode.wide,
+              onSelected: (_) => setState(() => _mode = _BallMode.wide),
+            ),
+            ChoiceChip(
+              label: const Text('No ball'),
+              selected: _mode == _BallMode.noBall,
+              onSelected: (_) => setState(() => _mode = _BallMode.noBall),
+            ),
+            ChoiceChip(
+              label: const Text('Bye'),
+              selected: _mode == _BallMode.bye,
+              onSelected: (_) => setState(() => _mode = _BallMode.bye),
+            ),
+            ChoiceChip(
+              label: const Text('Leg bye'),
+              selected: _mode == _BallMode.legBye,
+              onSelected: (_) => setState(() => _mode = _BallMode.legBye),
+            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -192,7 +256,13 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
         Wrap(
           spacing: 8,
           children: [0, 1, 2, 3, 4, 5, 6]
-              .map((n) => ChoiceChip(label: Text('$n'), selected: _runs == n, onSelected: (_) => setState(() => _runs = n)))
+              .map(
+                (n) => ChoiceChip(
+                  label: Text('$n'),
+                  selected: _runs == n,
+                  onSelected: (_) => setState(() => _runs = n),
+                ),
+              )
               .toList(),
         ),
         const SizedBox(height: 16),
@@ -209,7 +279,9 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
           DropdownButtonFormField<String>(
             initialValue: _wicketKind,
             decoration: const InputDecoration(labelText: 'Dismissal'),
-            items: _dismissalKinds.map((k) => DropdownMenuItem(value: k, child: Text(k))).toList(),
+            items: _dismissalKinds
+                .map((k) => DropdownMenuItem(value: k, child: Text(k)))
+                .toList(),
             onChanged: (v) => setState(() => _wicketKind = v!),
           ),
           const SizedBox(height: 8),
@@ -231,20 +303,33 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
         const SizedBox(height: 16),
         TextField(
           controller: _commentaryController,
-          decoration: const InputDecoration(labelText: 'Commentary (optional)', hintText: 'e.g. "Beaten on the outside edge!"'),
+          decoration: const InputDecoration(
+            labelText: 'Commentary (optional)',
+            hintText: 'e.g. "Beaten on the outside edge!"',
+          ),
           maxLines: 2,
         ),
         const SizedBox(height: 24),
         FilledButton(
-          onPressed: _canSubmit() ? () => _submit(match.id, innings.inningsNumber) : null,
+          onPressed: _canSubmit()
+              ? () => _submit(match.id, innings.inningsNumber)
+              : null,
           child: _submitting
-              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : const Text('Submit ball'),
         ),
         const SizedBox(height: 8),
         OutlinedButton(
           onPressed: () => _closeInnings(match.id, innings.inningsNumber),
-          child: const Text('Close this innings'),
+          // A Test innings has no overs cap, so closing it before all-out is
+          // a real declaration rather than a formality.
+          child: Text(
+            isTest ? 'Declare / close this innings' : 'Close this innings',
+          ),
         ),
       ],
     );
@@ -266,19 +351,27 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
   }
 
   bool _canSubmit() {
-    if (_submitting || _strikerId == null || _nonStrikerId == null || _bowlerId == null) return false;
+    if (_submitting ||
+        _strikerId == null ||
+        _nonStrikerId == null ||
+        _bowlerId == null) {
+      return false;
+    }
     if (_isWicket && _playerOutId == null) return false;
     return true;
   }
 
-  PendingDelivery _pendingFromForm(String matchId, int inningsNumber) => PendingDelivery(
+  PendingDelivery _pendingFromForm(String matchId, int inningsNumber) =>
+      PendingDelivery(
         matchId: matchId,
         clientEventId: _clientEventId,
         inningsNumber: inningsNumber,
         strikerId: _strikerId!,
         nonStrikerId: _nonStrikerId!,
         bowlerId: _bowlerId!,
-        runsOffBat: _mode == _BallMode.legal || _mode == _BallMode.noBall ? _runs : 0,
+        runsOffBat: _mode == _BallMode.legal || _mode == _BallMode.noBall
+            ? _runs
+            : 0,
         extraWides: _mode == _BallMode.wide ? _wideRuns + _runs : 0,
         extraNoballs: _mode == _BallMode.noBall ? _noballRuns : 0,
         extraByes: _mode == _BallMode.bye ? _runs : 0,
@@ -287,12 +380,16 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
         wicketKind: _isWicket ? _wicketKind : null,
         playerOutId: _isWicket ? _playerOutId : null,
         fielderId: _isWicket ? _fielderId : null,
-        commentary: _commentaryController.text.trim().isEmpty ? null : _commentaryController.text.trim(),
+        commentary: _commentaryController.text.trim().isEmpty
+            ? null
+            : _commentaryController.text.trim(),
         queuedAt: DateTime.now(),
       );
 
   Future<bool> _submitToServer(PendingDelivery d) async {
-    final result = await ref.read(apiClientProvider).postDelivery(
+    final result = await ref
+        .read(apiClientProvider)
+        .postDelivery(
           d.matchId,
           clientEventId: d.clientEventId,
           inningsNumber: d.inningsNumber,
@@ -342,7 +439,13 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
       } on ApiException catch (e) {
         if (mounted && !silent) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.statusCode == null ? 'Still offline — will keep retrying.' : 'Sync stopped: ${e.message}')),
+            SnackBar(
+              content: Text(
+                e.statusCode == null
+                    ? 'Still offline — will keep retrying.'
+                    : 'Sync stopped: ${e.message}',
+              ),
+            ),
           );
         }
         break;
@@ -374,13 +477,19 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
           inningsComplete = await _submitToServer(delivery);
           ref.invalidate(matchProvider(matchId));
         } on ApiException catch (e) {
-          if (e.statusCode != null) rethrow; // a real server error, not a dropped connection
+          if (e.statusCode != null) {
+            rethrow; // a real server error, not a dropped connection
+          }
           final queue = ref.read(pendingDeliveryQueueProvider);
           await queue.enqueue(delivery);
           if (mounted) setState(() => _pendingCount++);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Offline — ball queued, it'll sync automatically once you're back online.")),
+              const SnackBar(
+                content: Text(
+                  "Offline — ball queued, it'll sync automatically once you're back online.",
+                ),
+              ),
             );
           }
         }
@@ -388,7 +497,9 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
 
       if (!mounted) return;
       if (inningsComplete) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Innings complete')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Innings complete')));
       }
       _commentaryController.clear();
       setState(() {
@@ -401,7 +512,9 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
       });
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -412,16 +525,24 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
       await ref.read(apiClientProvider).closeInnings(matchId, inningsNumber);
       ref.invalidate(matchProvider(matchId));
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Innings closed')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Innings closed')));
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 }
 
 class _PendingSyncBanner extends StatelessWidget {
-  const _PendingSyncBanner({required this.count, required this.syncing, required this.onSyncNow});
+  const _PendingSyncBanner({
+    required this.count,
+    required this.syncing,
+    required this.onSyncNow,
+  });
 
   final int count;
   final bool syncing;
@@ -433,20 +554,31 @@ class _PendingSyncBanner extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: Row(
         children: [
           Icon(Icons.cloud_off, size: 18, color: scheme.onErrorContainer),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              count == 1 ? '1 ball waiting to sync — the score above is not up to date.' : '$count balls waiting to sync — the score above is not up to date.',
+              count == 1
+                  ? '1 ball waiting to sync — the score above is not up to date.'
+                  : '$count balls waiting to sync — the score above is not up to date.',
               style: TextStyle(color: scheme.onErrorContainer),
             ),
           ),
           TextButton(
             onPressed: syncing ? null : onSyncNow,
-            child: syncing ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Sync now'),
+            child: syncing
+                ? const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Sync now'),
           ),
         ],
       ),
@@ -455,7 +587,11 @@ class _PendingSyncBanner extends StatelessWidget {
 }
 
 class _RateLine extends StatelessWidget {
-  const _RateLine({required this.innings, required this.totals, required this.ballsPerOver});
+  const _RateLine({
+    required this.innings,
+    required this.totals,
+    required this.ballsPerOver,
+  });
 
   final InningsDetail innings;
   final InningsTotals totals;
@@ -467,18 +603,30 @@ class _RateLine extends StatelessWidget {
     final crr = runRate(totals.runs, totals.legalBalls, ballsPerOver);
     final parts = ['CRR ${crr.toStringAsFixed(2)}'];
 
+    final maxOvers = innings.maxOvers;
     if (innings.target != null) {
-      final rrr = requiredRunRate(
-        target: innings.target!,
-        runsSoFar: totals.runs,
-        legalBallsBowled: totals.legalBalls,
-        maxOvers: innings.maxOvers,
-        ballsPerOver: ballsPerOver,
-      );
       final runsNeeded = innings.target! - totals.runs;
-      final remaining = ballsRemaining(maxOvers: innings.maxOvers, ballsPerOver: ballsPerOver, legalBallsBowled: totals.legalBalls);
-      if (rrr != null && runsNeeded > 0) {
-        parts.add('RRR ${rrr.toStringAsFixed(2)} · need $runsNeeded off $remaining');
+      if (maxOvers == null) {
+        // Test match: unlimited overs, so there's no "off N balls" to show.
+        if (runsNeeded > 0) parts.add('need $runsNeeded');
+      } else {
+        final rrr = requiredRunRate(
+          target: innings.target!,
+          runsSoFar: totals.runs,
+          legalBallsBowled: totals.legalBalls,
+          maxOvers: maxOvers,
+          ballsPerOver: ballsPerOver,
+        );
+        final remaining = ballsRemaining(
+          maxOvers: maxOvers,
+          ballsPerOver: ballsPerOver,
+          legalBallsBowled: totals.legalBalls,
+        );
+        if (rrr != null && runsNeeded > 0) {
+          parts.add(
+            'RRR ${rrr.toStringAsFixed(2)} · need $runsNeeded off $remaining',
+          );
+        }
       }
     }
 
@@ -507,8 +655,11 @@ class _PlayerDropdown extends StatelessWidget {
       initialValue: value,
       decoration: InputDecoration(labelText: label),
       items: [
-        if (allowNone) const DropdownMenuItem<String>(value: null, child: Text('None')),
-        ...players.map((p) => DropdownMenuItem(value: p.id, child: Text(p.name))),
+        if (allowNone)
+          const DropdownMenuItem<String>(value: null, child: Text('None')),
+        ...players.map(
+          (p) => DropdownMenuItem(value: p.id, child: Text(p.name)),
+        ),
       ],
       onChanged: onChanged,
     );

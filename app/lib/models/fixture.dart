@@ -28,19 +28,32 @@ class Fixture {
   final GroundRef? ground;
 
   factory Fixture.fromJson(Map<String, dynamic> json) => Fixture(
-        id: json['id'] as String,
-        matchNumber: json['match_number'] as int,
-        scheduledStart: json['scheduled_start'] == null ? null : DateTime.parse(json['scheduled_start'] as String),
-        status: json['status'] as String,
-        result: json['result'] as String?,
-        resultNote: json['result_note'] as String?,
-        winMarginRuns: json['win_margin_runs'] as int?,
-        winMarginWickets: json['win_margin_wickets'] as int?,
-        teamA: TeamRef.fromJson(json['team_a'] as Map<String, dynamic>),
-        teamB: TeamRef.fromJson(json['team_b'] as Map<String, dynamic>),
-        ground: json['ground'] == null ? null : GroundRef.fromJson(json['ground'] as Map<String, dynamic>),
-      );
+    id: json['id'] as String,
+    matchNumber: json['match_number'] as int,
+    scheduledStart: json['scheduled_start'] == null
+        ? null
+        : DateTime.parse(json['scheduled_start'] as String),
+    status: json['status'] as String,
+    result: json['result'] as String?,
+    resultNote: json['result_note'] as String?,
+    winMarginRuns: json['win_margin_runs'] as int?,
+    winMarginWickets: json['win_margin_wickets'] as int?,
+    teamA: TeamRef.fromJson(json['team_a'] as Map<String, dynamic>),
+    teamB: TeamRef.fromJson(json['team_b'] as Map<String, dynamic>),
+    ground: json['ground'] == null
+        ? null
+        : GroundRef.fromJson(json['ground'] as Map<String, dynamic>),
+  );
 
-  bool get isLive => status == 'live' || status == 'innings_break' || status == 'toss_done' || status == 'super_over';
-  bool get isCompleted => status == 'completed' || status == 'abandoned' || status == 'cancelled' || status == 'forfeited';
+  bool get isLive =>
+      status == 'live' ||
+      status == 'innings_break' ||
+      status == 'toss_done' ||
+      status == 'super_over' ||
+      status == 'day_break';
+  bool get isCompleted =>
+      status == 'completed' ||
+      status == 'abandoned' ||
+      status == 'cancelled' ||
+      status == 'forfeited';
 }
