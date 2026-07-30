@@ -72,20 +72,44 @@ router.patch('/platform/settings', requireAuth, requirePlatformAdmin, async (req
 // single guard at the top of this handler without restructuring anything.
 // ---------------------------------------------------------------------------
 
-const createTournamentSchema = z.object({
-  name: z.string().trim().min(1),
-  slug: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .regex(/^[a-z0-9-]+$/, 'Lowercase letters, numbers and hyphens only'),
-  season_year: z.number().int().min(2000).max(2100),
-  overs_per_innings: z.number().int().min(1).max(50),
-  max_overs_per_bowler: z.number().int().min(1),
-  organizer_org: z.string().trim().optional(),
-  country_code: z.string().length(2).optional(),
-  ball: z.enum(['leather', 'tennis', 'tape']).optional(),
-});
+/**
+ * Real Law 14.2 follow-on margins, keyed by scheduled match length — used
+ * only as the organizer-editable default, never re-consulted at scoring
+ * time (that always reads tournament_rules.follow_on_margin).
+ */
+function defaultFollowOnMargin(daysPerMatch: number): number {
+  if (daysPerMatch >= 5) return 200;
+  if (daysPerMatch >= 3) return 150;
+  if (daysPerMatch === 2) return 100;
+  return 75;
+}
+
+const createTournamentSchema = z
+  .object({
+    name: z.string().trim().min(1),
+    slug: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^[a-z0-9-]+$/, 'Lowercase letters, numbers and hyphens only'),
+    season_year: z.number().int().min(2000).max(2100),
+    match_type: z.enum(['limited_overs', 'test']).optional(),
+    overs_per_innings: z.number().int().min(1).max(50).optional(),
+    max_overs_per_bowler: z.number().int().min(1).optional(),
+    days_per_match: z.number().int().min(1).max(6).optional(),
+    follow_on_margin: z.number().int().min(0).optional(),
+    organizer_org: z.string().trim().optional(),
+    country_code: z.string().length(2).optional(),
+    ball: z.enum(['leather', 'tennis', 'tape']).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if ((data.match_type ?? 'limited_overs') === 'limited_overs') {
+      if (data.overs_per_innings === undefined) ctx.addIssue({ code: 'custom', message: 'Required', path: ['overs_per_innings'] });
+      if (data.max_overs_per_bowler === undefined) ctx.addIssue({ code: 'custom', message: 'Required', path: ['max_overs_per_bowler'] });
+    } else if (data.days_per_match === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'Required', path: ['days_per_match'] });
+    }
+  });
 
 router.post('/tournaments', requireAuth, async (req, res) => {
   const parsed = createTournamentSchema.safeParse(req.body);
@@ -94,7 +118,8 @@ router.post('/tournaments', requireAuth, async (req, res) => {
     return;
   }
   const data = parsed.data;
-  if (data.max_overs_per_bowler > data.overs_per_innings) {
+  const matchType = data.match_type ?? 'limited_overs';
+  if (matchType === 'limited_overs' && data.max_overs_per_bowler! > data.overs_per_innings!) {
     res.status(400).json({ error: 'max_overs_per_bowler cannot exceed overs_per_innings' });
     return;
   }
@@ -124,7 +149,14 @@ router.post('/tournaments', requireAuth, async (req, res) => {
 
       await trx
         .insertInto('tournament_rules')
-        .values({ tournament_id: created.id, overs_per_innings: data.overs_per_innings, max_overs_per_bowler: data.max_overs_per_bowler })
+        .values({
+          tournament_id: created.id,
+          match_type: matchType,
+          overs_per_innings: matchType === 'limited_overs' ? data.overs_per_innings! : null,
+          max_overs_per_bowler: matchType === 'limited_overs' ? data.max_overs_per_bowler! : null,
+          days_per_match: matchType === 'test' ? data.days_per_match! : null,
+          follow_on_margin: matchType === 'test' ? (data.follow_on_margin ?? defaultFollowOnMargin(data.days_per_match!)) : undefined,
+        })
         .execute();
 
       await trx

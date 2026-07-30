@@ -113,13 +113,14 @@ describe('computeNetRunRate', () => {
 });
 
 describe('computeMatchPoints', () => {
-  const rules = { pointsWin: 2, pointsTie: 1, pointsNoResult: 1, pointsLoss: 0 };
+  const rules = { pointsWin: 2, pointsTie: 1, pointsNoResult: 1, pointsLoss: 0, pointsDraw: 1 };
 
   it('maps each outcome to the tournament-configured points', () => {
     expect(computeMatchPoints('win', rules)).toBe(2);
     expect(computeMatchPoints('tie', rules)).toBe(1);
     expect(computeMatchPoints('no_result', rules)).toBe(1);
     expect(computeMatchPoints('loss', rules)).toBe(0);
+    expect(computeMatchPoints('draw', rules)).toBe(1);
   });
 });
 
@@ -133,6 +134,7 @@ describe('rankStandings', () => {
       lost: 0,
       tied: 0,
       noResult: 0,
+      drawn: 0,
       points: 0,
       netRunRate: 0,
       ...overrides,

@@ -30,7 +30,8 @@ export function validateDelivery(proposal: DeliveryProposal, priorDeliveries: De
     const oversBowled = new Set(
       priorDeliveries.filter((d) => !d.voidedAt && d.bowlerId === proposal.bowlerId).map((d) => d.overNumber),
     );
-    if (oversBowled.size >= rules.maxOversPerBowler) {
+    // Test bowlers have no over quota — rules.maxOversPerBowler is null for them.
+    if (rules.maxOversPerBowler !== null && oversBowled.size >= rules.maxOversPerBowler) {
       return { valid: false, error: `${proposal.bowlerId} has already bowled their full quota of ${rules.maxOversPerBowler} over(s)` };
     }
 

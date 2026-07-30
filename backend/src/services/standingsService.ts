@@ -15,6 +15,7 @@ function outcomeForTeam(
   match: { team_a_id: string; team_b_id: string; result: string | null; winner_team_id: string | null },
 ): MatchOutcomeForTeam {
   if (match.result === 'tie') return 'tie';
+  if (match.result === 'draw') return 'draw';
   if (match.result === 'no_result' || match.result === 'abandoned' || !match.result) return 'no_result';
   return match.winner_team_id === teamId ? 'win' : 'loss';
 }
@@ -56,6 +57,7 @@ export async function recomputeGroupStandings(groupId: string): Promise<void> {
   const lost = new Map<string, number>();
   const tied = new Map<string, number>();
   const noResult = new Map<string, number>();
+  const drawn = new Map<string, number>();
   const points = new Map<string, number>();
   const headToHeadWins = new Map<string, Set<string>>(); // teamId -> set of teamIds it beat
 
@@ -66,41 +68,48 @@ export async function recomputeGroupStandings(groupId: string): Promise<void> {
     lost.set(id, 0);
     tied.set(id, 0);
     noResult.set(id, 0);
+    drawn.set(id, 0);
     points.set(id, 0);
     headToHeadWins.set(id, new Set());
   }
 
   for (const match of matches) {
     const matchIsNoResult = match.result === 'no_result' || match.result === 'abandoned' || !match.result;
-    const oversAllotted = match.overs_override ?? rules.oversPerInnings;
+    // Net run rate has no meaningful definition for unlimited-overs Test
+    // innings (real Test competitions like the WTC rank by points instead) —
+    // skip it entirely for test-format tournaments rather than dividing by
+    // an overs-allotted figure that doesn't exist.
+    if (rules.matchType !== 'test') {
+      const oversAllotted = match.overs_override ?? rules.oversPerInnings ?? 0;
 
-    const inningsRows = await db
-      .selectFrom('innings')
-      .innerJoin('innings_totals', 'innings_totals.innings_id', 'innings.id')
-      .select([
-        'innings.batting_team_id',
-        'innings.bowling_team_id',
-        'innings.is_super_over',
-        'innings_totals.runs',
-        'innings_totals.wickets',
-        'innings_totals.legal_balls',
-      ])
-      .where('innings.match_id', '=', match.id)
-      .execute();
+      const inningsRows = await db
+        .selectFrom('innings')
+        .innerJoin('innings_totals', 'innings_totals.innings_id', 'innings.id')
+        .select([
+          'innings.batting_team_id',
+          'innings.bowling_team_id',
+          'innings.is_super_over',
+          'innings_totals.runs',
+          'innings_totals.wickets',
+          'innings_totals.legal_balls',
+        ])
+        .where('innings.match_id', '=', match.id)
+        .execute();
 
-    for (const inn of inningsRows) {
-      const nrrInput: InningsNrrInput = {
-        battingTeamId: inn.batting_team_id,
-        bowlingTeamId: inn.bowling_team_id,
-        runsScored: inn.runs,
-        legalBallsBowled: inn.legal_balls,
-        battingTeamAllOut: inn.wickets >= rules.playersPerSide - 1,
-        oversAllotted,
-        isSuperOver: inn.is_super_over,
-        isNoResult: matchIsNoResult,
-      };
-      inningsByTeam.get(inn.batting_team_id)?.push(nrrInput);
-      inningsByTeam.get(inn.bowling_team_id)?.push(nrrInput);
+      for (const inn of inningsRows) {
+        const nrrInput: InningsNrrInput = {
+          battingTeamId: inn.batting_team_id,
+          bowlingTeamId: inn.bowling_team_id,
+          runsScored: inn.runs,
+          legalBallsBowled: inn.legal_balls,
+          battingTeamAllOut: inn.wickets >= rules.playersPerSide - 1,
+          oversAllotted,
+          isSuperOver: inn.is_super_over,
+          isNoResult: matchIsNoResult,
+        };
+        inningsByTeam.get(inn.batting_team_id)?.push(nrrInput);
+        inningsByTeam.get(inn.bowling_team_id)?.push(nrrInput);
+      }
     }
 
     for (const teamId of [match.team_a_id, match.team_b_id]) {
@@ -111,6 +120,7 @@ export async function recomputeGroupStandings(groupId: string): Promise<void> {
       if (outcome === 'loss') lost.set(teamId, (lost.get(teamId) ?? 0) + 1);
       if (outcome === 'tie') tied.set(teamId, (tied.get(teamId) ?? 0) + 1);
       if (outcome === 'no_result') noResult.set(teamId, (noResult.get(teamId) ?? 0) + 1);
+      if (outcome === 'draw') drawn.set(teamId, (drawn.get(teamId) ?? 0) + 1);
       points.set(teamId, (points.get(teamId) ?? 0) + computeMatchPoints(outcome, rules));
     }
 
@@ -129,6 +139,7 @@ export async function recomputeGroupStandings(groupId: string): Promise<void> {
     lost: lost.get(teamId) ?? 0,
     tied: tied.get(teamId) ?? 0,
     noResult: noResult.get(teamId) ?? 0,
+    drawn: drawn.get(teamId) ?? 0,
     points: points.get(teamId) ?? 0,
     netRunRate: computeNetRunRate(teamId, inningsByTeam.get(teamId) ?? [], rules.ballsPerOver),
   }));
@@ -152,6 +163,7 @@ export async function recomputeGroupStandings(groupId: string): Promise<void> {
           lost: row.lost,
           tied: row.tied,
           no_result: row.noResult,
+          drawn: row.drawn,
           points: row.points,
           net_run_rate: row.netRunRate,
           rank: index + 1,

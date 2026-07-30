@@ -40,7 +40,9 @@ export function buildScorecard(allDeliveries: Delivery[], rules: TournamentRules
   let currentPartnership: PartnershipLine | null = null;
 
   const wicketsThatEndInnings = rules.playersPerSide - 1;
-  const maxLegalBalls = rules.oversPerInnings * rules.ballsPerOver;
+  // A Test innings has no overs cap — it only ends via all-out or an
+  // explicit declare/close call, never by exhausting an overs quota.
+  const maxLegalBalls = rules.matchType === 'test' || rules.oversPerInnings === null ? null : rules.oversPerInnings * rules.ballsPerOver;
 
   function ensureBatter(id: string): BattingLine {
     let line = battingCards.get(id);
@@ -155,7 +157,7 @@ export function buildScorecard(allDeliveries: Delivery[], rules: TournamentRules
     if (wickets >= wicketsThatEndInnings) {
       isComplete = true;
       completionReason = 'all_out';
-    } else if (legalBalls >= maxLegalBalls) {
+    } else if (maxLegalBalls !== null && legalBalls >= maxLegalBalls) {
       isComplete = true;
       completionReason = 'overs_complete';
     } else if (options.target !== undefined && runs >= options.target) {

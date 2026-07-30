@@ -10,6 +10,8 @@ export async function loadTournamentRules(db: Kysely<DB>, tournamentId: string):
     .executeTakeFirstOrThrow();
 
   return {
+    matchType: row.match_type,
+    daysPerMatch: row.days_per_match,
     oversPerInnings: row.overs_per_innings,
     ballsPerOver: row.balls_per_over,
     maxOversPerBowler: row.max_overs_per_bowler,
@@ -22,7 +24,10 @@ export async function loadTournamentRules(db: Kysely<DB>, tournamentId: string):
     pointsTie: row.points_tie,
     pointsNoResult: row.points_no_result,
     pointsLoss: row.points_loss,
+    pointsDraw: row.points_draw,
     superOverOnTie: row.super_over_on_tie,
     dlsEnabled: row.dls_enabled,
+    followOnEnabled: row.follow_on_enabled,
+    followOnMargin: row.follow_on_margin,
   };
 }

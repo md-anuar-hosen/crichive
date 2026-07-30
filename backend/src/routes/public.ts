@@ -9,7 +9,7 @@ import { isUuid } from '../utils/validation';
 
 const router = Router();
 
-const MATCH_STATUSES = ['scheduled', 'toss_done', 'live', 'innings_break', 'super_over', 'completed', 'abandoned', 'cancelled', 'forfeited'] as const;
+const MATCH_STATUSES = ['scheduled', 'toss_done', 'live', 'innings_break', 'super_over', 'day_break', 'completed', 'abandoned', 'cancelled', 'forfeited'] as const;
 
 router.use((_req, res, next) => {
   res.set('Cache-Control', 'public, max-age=30');
@@ -76,6 +76,7 @@ router.get('/tournaments/:slug', async (req, res) => {
     ...serializeTournament(tournament),
     rules: rules
       ? {
+          match_type: rules.match_type,
           overs_per_innings: rules.overs_per_innings,
           balls_per_over: rules.balls_per_over,
           max_overs_per_bowler: rules.max_overs_per_bowler,
@@ -88,9 +89,13 @@ router.get('/tournaments/:slug', async (req, res) => {
           points_tie: rules.points_tie,
           points_no_result: rules.points_no_result,
           points_loss: rules.points_loss,
+          points_draw: rules.points_draw,
           bonus_point_enabled: rules.bonus_point_enabled,
           super_over_on_tie: rules.super_over_on_tie,
           dls_enabled: rules.dls_enabled,
+          days_per_match: rules.days_per_match,
+          follow_on_enabled: rules.follow_on_enabled,
+          follow_on_margin: rules.follow_on_margin,
         }
       : null,
   });
@@ -242,6 +247,7 @@ router.get('/tournaments/:slug/standings', async (req, res) => {
       'standings.lost',
       'standings.tied',
       'standings.no_result',
+      'standings.drawn',
       'standings.points',
       'standings.net_run_rate',
       'standings.rank',
@@ -266,6 +272,7 @@ router.get('/tournaments/:slug/standings', async (req, res) => {
       lost: row.lost,
       tied: row.tied,
       no_result: row.no_result,
+      drawn: row.drawn,
       points: row.points,
       net_run_rate: row.net_run_rate,
       rank: row.rank,

@@ -49,9 +49,14 @@ export interface Delivery {
 }
 
 export interface TournamentRules {
-  oversPerInnings: number;
+  matchType: 'limited_overs' | 'test';
+  /** Null for limited-overs tournaments; 2/3/5 (or another organizer-chosen count) for Test. */
+  daysPerMatch: number | null;
+  /** Null for Test matches — a Test innings has no overs cap, only all-out/declaration ends it. */
+  oversPerInnings: number | null;
   ballsPerOver: number;
-  maxOversPerBowler: number;
+  /** Null for Test matches — bowlers have no over quota. */
+  maxOversPerBowler: number | null;
   powerplayOvers: number;
   playersPerSide: number;
   wideRuns: number;
@@ -61,8 +66,11 @@ export interface TournamentRules {
   pointsTie: number;
   pointsNoResult: number;
   pointsLoss: number;
+  pointsDraw: number;
   superOverOnTie: boolean;
   dlsEnabled: boolean;
+  followOnEnabled: boolean;
+  followOnMargin: number;
 }
 
 export interface BattingLine {

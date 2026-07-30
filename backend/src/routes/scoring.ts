@@ -3,11 +3,18 @@ import { Router } from 'express';
 import type { Selectable } from 'kysely';
 import { z } from 'zod';
 import { db } from '../db/index';
-import type { Matches } from '../db/types';
+import type { Innings, Matches } from '../db/types';
 import { requireAuth, requireTournamentRole } from '../middleware/auth';
 import { requireMatchRole } from '../middleware/matchRole';
-import { buildScorecard, isNextDeliveryFreeHit, resolveMatchResult, validateDelivery } from '../domain/scoring';
-import type { Delivery } from '../domain/scoring';
+import {
+  buildScorecard,
+  isFollowOnEligible,
+  isNextDeliveryFreeHit,
+  resolveMatchResult,
+  resolveTestMatchResult,
+  validateDelivery,
+} from '../domain/scoring';
+import type { Delivery, TestInningsSummary, TestMatchOutcome, TournamentRules } from '../domain/scoring';
 import { computeRevisedTarget, resourceAvailablePercent } from '../domain/rainRule';
 import type { RainInterruption } from '../domain/rainRule';
 import { computeNextBallPosition, toDomainDelivery } from '../services/deliveryMapping';
@@ -314,8 +321,14 @@ router.post('/matches/:id/deliveries', requireAuth, requireMatchRole('organizer'
   // A chase's target is the first innings of its pair's final total + 1 —
   // innings 2 chases innings 1, innings 4 (super over) chases innings 3.
   // Innings 1 and 3 are each the first of their own pair and never chase.
+  // A Test match instead reads the target straight off the innings row: only
+  // the side batting last in the whole match (chasing an aggregate that
+  // accounts for a possible follow-on) ever has one set at all — see the
+  // innings-close and next-innings routes below for where it's computed.
   let target: number | undefined;
-  if (body.innings_number === 2 || body.innings_number === 4) {
+  if (rules.matchType === 'test') {
+    target = innings.target ?? undefined;
+  } else if (body.innings_number === 2 || body.innings_number === 4) {
     const priorInnings = await db
       .selectFrom('innings')
       .innerJoin('innings_totals', 'innings_totals.innings_id', 'innings.id')
@@ -510,6 +523,218 @@ router.post('/matches/:id/deliveries/:deliveryId/void', requireAuth, requireMatc
 });
 
 // ---------------------------------------------------------------------------
+// Test-match innings-close / result helpers. A Test match's 4-innings,
+// follow-on, declare-anytime structure doesn't fit the limited-overs
+// close-innings branching below at all, so it's handled entirely separately
+// here rather than threaded through that logic. No Super Over ever applies
+// to a Test match (confirmed with the user) — a tied Test simply stands.
+// ---------------------------------------------------------------------------
+
+async function finalizeTestMatch(actorUserId: string, match: Selectable<Matches>, outcome: TestMatchOutcome): Promise<void> {
+  await db.transaction().execute(async (trx) => {
+    let winnerTeamId: string | null = null;
+
+    if (outcome.kind === 'tie') {
+      await trx
+        .updateTable('matches')
+        .set({ result: 'tie', status: 'completed', result_note: 'Match tied', updated_at: new Date() })
+        .where('id', '=', match.id)
+        .execute();
+    } else if (outcome.kind === 'innings_win') {
+      winnerTeamId = outcome.winningTeamId;
+      await trx
+        .updateTable('matches')
+        .set({
+          result: outcome.winningTeamId === match.team_a_id ? 'team_a_won' : 'team_b_won',
+          winner_team_id: outcome.winningTeamId,
+          win_margin_runs: outcome.marginRuns,
+          result_note: `Won by an innings and ${outcome.marginRuns} run(s)`,
+          status: 'completed',
+          updated_at: new Date(),
+        })
+        .where('id', '=', match.id)
+        .execute();
+    } else if (outcome.kind === 'runs_win') {
+      winnerTeamId = outcome.winningTeamId;
+      await trx
+        .updateTable('matches')
+        .set({
+          result: outcome.winningTeamId === match.team_a_id ? 'team_a_won' : 'team_b_won',
+          winner_team_id: outcome.winningTeamId,
+          win_margin_runs: outcome.marginRuns,
+          result_note: `Won by ${outcome.marginRuns} run(s)`,
+          status: 'completed',
+          updated_at: new Date(),
+        })
+        .where('id', '=', match.id)
+        .execute();
+    } else {
+      winnerTeamId = outcome.winningTeamId;
+      await trx
+        .updateTable('matches')
+        .set({
+          result: outcome.winningTeamId === match.team_a_id ? 'team_a_won' : 'team_b_won',
+          winner_team_id: outcome.winningTeamId,
+          win_margin_wickets: outcome.marginWickets,
+          result_note: `Won by ${outcome.marginWickets} wicket(s)`,
+          status: 'completed',
+          updated_at: new Date(),
+        })
+        .where('id', '=', match.id)
+        .execute();
+    }
+
+    if (winnerTeamId && match.next_match_id && match.next_match_slot) {
+      await trx
+        .updateTable('matches')
+        .set(match.next_match_slot === 'team_a' ? { team_a_id: winnerTeamId, updated_at: new Date() } : { team_b_id: winnerTeamId, updated_at: new Date() })
+        .where('id', '=', match.next_match_id)
+        .execute();
+    }
+
+    await writeAuditLog(trx, {
+      actorUserId,
+      entityType: 'match',
+      entityId: match.id,
+      action: 'complete',
+      afterState: { outcome },
+    });
+  });
+
+  if (match.group_id) {
+    await recomputeGroupStandings(match.group_id);
+  }
+  const matchPlayers = await db.selectFrom('match_players').select('player_id').where('match_id', '=', match.id).execute();
+  if (matchPlayers.length) {
+    await recomputePlayerCareerStats(matchPlayers.map((p) => p.player_id));
+  }
+  await computeAndSetPlayerOfMatch(match.id);
+}
+
+async function closeTestInnings(
+  actorUserId: string,
+  match: Selectable<Matches>,
+  innings: Selectable<Innings>,
+  inningsNumber: number,
+  rules: TournamentRules,
+): Promise<Record<string, unknown>> {
+  const totalsRow = await db.selectFrom('innings_totals').select(['runs', 'wickets']).where('innings_id', '=', innings.id).executeTakeFirst();
+  const closingRuns = totalsRow?.runs ?? 0;
+  const closingWickets = totalsRow?.wickets ?? 0;
+  const wicketsThatEndInnings = rules.playersPerSide - 1;
+  const reachedTarget = innings.target !== null && closingRuns >= innings.target;
+  const isAllOut = closingWickets >= wicketsThatEndInnings;
+  const declared = !isAllOut && !reachedTarget;
+
+  if (inningsNumber === 1) {
+    await db.transaction().execute(async (trx) => {
+      await trx.updateTable('innings').set({ closed_at: new Date(), declared }).where('id', '=', innings.id).execute();
+      await trx
+        .insertInto('innings')
+        .values({
+          id: randomUUID(),
+          match_id: match.id,
+          innings_number: 2,
+          batting_team_id: innings.bowling_team_id,
+          bowling_team_id: innings.batting_team_id,
+          max_overs: null,
+          target: null,
+        })
+        .execute();
+      await trx.updateTable('matches').set({ status: 'innings_break', updated_at: new Date() }).where('id', '=', match.id).execute();
+      await writeAuditLog(trx, {
+        actorUserId,
+        entityType: 'match',
+        entityId: match.id,
+        action: 'close_innings',
+        afterState: { innings_number: 1, next_innings_number: 2, declared },
+      });
+    });
+    return { ok: true, next_innings_number: 2, declared };
+  }
+
+  if (inningsNumber === 2) {
+    // No auto-create here — whether innings 3 is a normal continuation or a
+    // follow-on is the organizer's call, made via POST .../next-innings.
+    await db.transaction().execute(async (trx) => {
+      await trx.updateTable('innings').set({ closed_at: new Date(), declared }).where('id', '=', innings.id).execute();
+      await trx.updateTable('matches').set({ status: 'innings_break', updated_at: new Date() }).where('id', '=', match.id).execute();
+      await writeAuditLog(trx, {
+        actorUserId,
+        entityType: 'match',
+        entityId: match.id,
+        action: 'close_innings',
+        afterState: { innings_number: 2, declared },
+      });
+    });
+    return { ok: true, awaiting_next_innings: true, declared };
+  }
+
+  // innings 3 or 4 — close it, then check whether the match is already
+  // decided (an innings win is possible right after innings 3).
+  await db.transaction().execute(async (trx) => {
+    await trx.updateTable('innings').set({ closed_at: new Date(), declared }).where('id', '=', innings.id).execute();
+  });
+
+  const priorInningsRows = await db
+    .selectFrom('innings')
+    .leftJoin('innings_totals', 'innings_totals.innings_id', 'innings.id')
+    .select(['innings.innings_number', 'innings.batting_team_id', 'innings.declared', 'innings_totals.runs', 'innings_totals.wickets'])
+    .where('innings.match_id', '=', match.id)
+    .where('innings.innings_number', '<=', inningsNumber)
+    .orderBy('innings.innings_number', 'asc')
+    .execute();
+
+  const summaries: TestInningsSummary[] = priorInningsRows.map((r) => ({
+    inningsNumber: r.innings_number,
+    battingTeamId: r.batting_team_id,
+    runs: r.runs ?? 0,
+    wickets: r.wickets ?? 0,
+    declared: r.declared,
+  }));
+
+  const decision = resolveTestMatchResult(summaries, rules, match.team_a_id!, match.team_b_id!);
+
+  if (!decision.decided) {
+    // Only reachable right after innings 3 — whichever side has batted only
+    // once so far bats innings 4, chasing the other side's aggregate.
+    const teamAInningsCount = summaries.filter((s) => s.battingTeamId === match.team_a_id).length;
+    const nextBattingTeamId = teamAInningsCount === 1 ? match.team_a_id! : match.team_b_id!;
+    const otherTeamId = nextBattingTeamId === match.team_a_id ? match.team_b_id! : match.team_a_id!;
+    const nextBattingAggregate = summaries.filter((s) => s.battingTeamId === nextBattingTeamId).reduce((sum, i) => sum + i.runs, 0);
+    const otherAggregate = summaries.filter((s) => s.battingTeamId === otherTeamId).reduce((sum, i) => sum + i.runs, 0);
+    const target = otherAggregate - nextBattingAggregate + 1;
+
+    await db.transaction().execute(async (trx) => {
+      await trx
+        .insertInto('innings')
+        .values({
+          id: randomUUID(),
+          match_id: match.id,
+          innings_number: 4,
+          batting_team_id: nextBattingTeamId,
+          bowling_team_id: otherTeamId,
+          max_overs: null,
+          target,
+        })
+        .execute();
+      await trx.updateTable('matches').set({ status: 'innings_break', updated_at: new Date() }).where('id', '=', match.id).execute();
+      await writeAuditLog(trx, {
+        actorUserId,
+        entityType: 'match',
+        entityId: match.id,
+        action: 'close_innings',
+        afterState: { innings_number: inningsNumber, next_innings_number: 4, target },
+      });
+    });
+    return { ok: true, next_innings_number: 4, target, declared };
+  }
+
+  await finalizeTestMatch(actorUserId, match, decision.outcome);
+  return { ok: true, outcome: decision.outcome, declared };
+}
+
+// ---------------------------------------------------------------------------
 // POST /matches/:id/innings/:n/close
 // ---------------------------------------------------------------------------
 
@@ -542,6 +767,12 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
   }
 
   const rules = await loadTournamentRules(db, match.tournament_id);
+
+  if (rules.matchType === 'test') {
+    const result = await closeTestInnings(req.user!.sub, match, innings, inningsNumber, rules);
+    res.json(result);
+    return;
+  }
 
   if (inningsNumber === 1) {
     await db.transaction().execute(async (trx) => {
@@ -793,6 +1024,204 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
 });
 
 // ---------------------------------------------------------------------------
+// POST /matches/:id/next-innings — Test matches only. Starts innings 3 after
+// innings 1 and 2 have both closed. The organizer must say whether to
+// enforce the follow-on whenever it's actually available; the eligibility
+// check itself lives in getMatchScorecard() (follow_on_available).
+// ---------------------------------------------------------------------------
+
+const nextInningsSchema = z.object({ enforce_follow_on: z.boolean().optional() });
+
+router.post('/matches/:id/next-innings', requireAuth, requireMatchRole('organizer', 'scorer'), async (req, res) => {
+  const match = await loadMatch(param(req.params.id));
+  if (!match) {
+    res.status(404).json({ error: 'Match not found' });
+    return;
+  }
+  const rules = await loadTournamentRules(db, match.tournament_id);
+  if (rules.matchType !== 'test') {
+    res.status(409).json({ error: 'This action only applies to Test matches' });
+    return;
+  }
+
+  const parsed = nextInningsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Validation failed', fields: zodFieldErrors(parsed.error) });
+    return;
+  }
+
+  const closedInnings = await db
+    .selectFrom('innings')
+    .leftJoin('innings_totals', 'innings_totals.innings_id', 'innings.id')
+    .select(['innings.innings_number', 'innings.batting_team_id', 'innings.bowling_team_id', 'innings.closed_at', 'innings_totals.runs'])
+    .where('innings.match_id', '=', match.id)
+    .orderBy('innings.innings_number', 'asc')
+    .execute();
+
+  if (closedInnings.length !== 2 || closedInnings.some((i) => i.closed_at === null)) {
+    res.status(409).json({ error: 'Both innings 1 and 2 must be closed before starting innings 3' });
+    return;
+  }
+
+  const [first, second] = closedInnings;
+  const followOnAvailable = isFollowOnEligible({ runs: first.runs ?? 0 }, { runs: second.runs ?? 0 }, rules);
+  if (followOnAvailable && parsed.data.enforce_follow_on === undefined) {
+    res.status(400).json({ error: 'The follow-on is available — enforce_follow_on must be specified (true or false)' });
+    return;
+  }
+
+  const enforceFollowOn = followOnAvailable && parsed.data.enforce_follow_on === true;
+  const battingTeamId = enforceFollowOn ? second.batting_team_id : first.batting_team_id;
+  const bowlingTeamId = enforceFollowOn ? second.bowling_team_id : first.bowling_team_id;
+
+  await db.transaction().execute(async (trx) => {
+    await trx
+      .insertInto('innings')
+      .values({
+        id: randomUUID(),
+        match_id: match.id,
+        innings_number: 3,
+        batting_team_id: battingTeamId,
+        bowling_team_id: bowlingTeamId,
+        max_overs: null,
+        target: null,
+      })
+      .execute();
+    await trx.updateTable('matches').set({ status: 'innings_break', updated_at: new Date() }).where('id', '=', match.id).execute();
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'match',
+      entityId: match.id,
+      action: 'next_innings',
+      afterState: { next_innings_number: 3, enforce_follow_on: enforceFollowOn },
+    });
+  });
+
+  res.json({ ok: true, next_innings_number: 3, follow_on_enforced: enforceFollowOn });
+});
+
+// ---------------------------------------------------------------------------
+// POST /matches/:id/stumps, POST /matches/:id/resume-play — Test matches
+// only. Days are organizer-managed, not wall-clock-automated: stumps pauses
+// scoring, resume-play starts the next day and is blocked once the
+// tournament's days_per_match has been used up.
+// ---------------------------------------------------------------------------
+
+router.post('/matches/:id/stumps', requireAuth, requireMatchRole('organizer', 'scorer'), async (req, res) => {
+  const match = await loadMatch(param(req.params.id));
+  if (!match) {
+    res.status(404).json({ error: 'Match not found' });
+    return;
+  }
+  const rules = await loadTournamentRules(db, match.tournament_id);
+  if (rules.matchType !== 'test') {
+    res.status(409).json({ error: 'This action only applies to Test matches' });
+    return;
+  }
+  if (!['toss_done', 'live', 'innings_break'].includes(match.status)) {
+    res.status(409).json({ error: `Match is not in progress (status: ${match.status})` });
+    return;
+  }
+
+  await db.transaction().execute(async (trx) => {
+    await trx.updateTable('matches').set({ status: 'day_break', updated_at: new Date() }).where('id', '=', match.id).execute();
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'match',
+      entityId: match.id,
+      action: 'stumps',
+      afterState: { day: match.current_day },
+    });
+  });
+
+  res.json({ ok: true, day: match.current_day });
+});
+
+router.post('/matches/:id/resume-play', requireAuth, requireMatchRole('organizer', 'scorer'), async (req, res) => {
+  const match = await loadMatch(param(req.params.id));
+  if (!match) {
+    res.status(404).json({ error: 'Match not found' });
+    return;
+  }
+  const rules = await loadTournamentRules(db, match.tournament_id);
+  if (rules.matchType !== 'test') {
+    res.status(409).json({ error: 'This action only applies to Test matches' });
+    return;
+  }
+  if (match.status !== 'day_break') {
+    res.status(409).json({ error: `Match is not at a day break (status: ${match.status})` });
+    return;
+  }
+  if (rules.daysPerMatch !== null && match.current_day >= rules.daysPerMatch) {
+    res.status(409).json({ error: `All ${rules.daysPerMatch} scheduled days have been used — draw the match if no result has been reached` });
+    return;
+  }
+
+  const nextDay = match.current_day + 1;
+  await db.transaction().execute(async (trx) => {
+    await trx.updateTable('matches').set({ status: 'innings_break', current_day: nextDay, updated_at: new Date() }).where('id', '=', match.id).execute();
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'match',
+      entityId: match.id,
+      action: 'resume_play',
+      afterState: { day: nextDay },
+    });
+  });
+
+  res.json({ ok: true, day: nextDay });
+});
+
+// ---------------------------------------------------------------------------
+// POST /matches/:id/draw — Test matches only. The organizer explicitly ends
+// the match with no result, because the app never infers a draw from real
+// elapsed time on its own.
+// ---------------------------------------------------------------------------
+
+router.post('/matches/:id/draw', requireAuth, requireMatchRole('organizer'), async (req, res) => {
+  const match = await loadMatch(param(req.params.id));
+  if (!match) {
+    res.status(404).json({ error: 'Match not found' });
+    return;
+  }
+  const rules = await loadTournamentRules(db, match.tournament_id);
+  if (rules.matchType !== 'test') {
+    res.status(409).json({ error: 'This action only applies to Test matches' });
+    return;
+  }
+  if (['completed', 'abandoned', 'cancelled', 'forfeited'].includes(match.status)) {
+    res.status(409).json({ error: `Match already finished (status: ${match.status})` });
+    return;
+  }
+
+  await db.transaction().execute(async (trx) => {
+    await trx
+      .updateTable('matches')
+      .set({ status: 'completed', result: 'draw', result_note: 'Match drawn', updated_at: new Date() })
+      .where('id', '=', match.id)
+      .execute();
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'match',
+      entityId: match.id,
+      action: 'draw',
+      afterState: { day: match.current_day },
+    });
+  });
+
+  if (match.group_id) {
+    await recomputeGroupStandings(match.group_id);
+  }
+  const matchPlayers = await db.selectFrom('match_players').select('player_id').where('match_id', '=', match.id).execute();
+  if (matchPlayers.length) {
+    await recomputePlayerCareerStats(matchPlayers.map((p) => p.player_id));
+  }
+  await computeAndSetPlayerOfMatch(match.id);
+
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
 // POST /matches/:id/abandon
 // ---------------------------------------------------------------------------
 
@@ -1004,6 +1433,10 @@ router.post('/matches/:id/innings/:n/interruption', requireAuth, requireMatchRol
     res.status(409).json({ error: 'CricHive Rain Rule is not enabled for this tournament' });
     return;
   }
+  if (rules.matchType === 'test' || rules.oversPerInnings === null) {
+    res.status(409).json({ error: 'The CricHive Rain Rule does not apply to Test matches' });
+    return;
+  }
 
   const inningsNumber = Number(param(req.params.n));
   if (!Number.isInteger(inningsNumber) || inningsNumber < 1) {
@@ -1153,9 +1586,10 @@ async function resolveTournamentBySlug(req: Parameters<typeof requireAuth>[0], r
 
 const rulesSchema = z
   .object({
-    overs_per_innings: z.number().int().min(1).max(50),
+    match_type: z.enum(['limited_overs', 'test']),
+    overs_per_innings: z.number().int().min(1).max(50).nullable(),
     balls_per_over: z.number().int().min(1),
-    max_overs_per_bowler: z.number().int().min(1),
+    max_overs_per_bowler: z.number().int().min(1).nullable(),
     powerplay_overs: z.number().int().min(0),
     players_per_side: z.number().int().min(2),
     wide_runs: z.number().int().min(0),
@@ -1165,9 +1599,13 @@ const rulesSchema = z
     points_tie: z.number().int().min(0),
     points_no_result: z.number().int().min(0),
     points_loss: z.number().int().min(0),
+    points_draw: z.number().int().min(0),
     bonus_point_enabled: z.boolean(),
     super_over_on_tie: z.boolean(),
     dls_enabled: z.boolean(),
+    days_per_match: z.number().int().min(1).max(6).nullable(),
+    follow_on_enabled: z.boolean(),
+    follow_on_margin: z.number().int().min(0),
   })
   .partial()
   .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
@@ -1204,9 +1642,9 @@ router.patch(
 
     if (Object.prototype.hasOwnProperty.call(parsed.data, 'max_overs_per_bowler') || Object.prototype.hasOwnProperty.call(parsed.data, 'overs_per_innings')) {
       const current = await db.selectFrom('tournament_rules').selectAll().where('tournament_id', '=', tournamentId).executeTakeFirstOrThrow();
-      const nextOvers = parsed.data.overs_per_innings ?? current.overs_per_innings;
-      const nextQuota = parsed.data.max_overs_per_bowler ?? current.max_overs_per_bowler;
-      if (nextQuota > nextOvers) {
+      const nextOvers = parsed.data.overs_per_innings !== undefined ? parsed.data.overs_per_innings : current.overs_per_innings;
+      const nextQuota = parsed.data.max_overs_per_bowler !== undefined ? parsed.data.max_overs_per_bowler : current.max_overs_per_bowler;
+      if (nextQuota !== null && nextOvers !== null && nextQuota > nextOvers) {
         res.status(400).json({ error: 'max_overs_per_bowler cannot exceed overs_per_innings' });
         return;
       }

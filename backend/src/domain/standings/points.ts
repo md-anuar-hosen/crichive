@@ -10,5 +10,7 @@ export function computeMatchPoints(outcome: MatchOutcomeForTeam, rules: PointsRu
       return rules.pointsNoResult;
     case 'loss':
       return rules.pointsLoss;
+    case 'draw':
+      return rules.pointsDraw;
   }
 }

@@ -3,5 +3,6 @@ export * from './foldInnings';
 export * from './strikeRotation';
 export * from './validateDelivery';
 export * from './matchResult';
+export * from './testMatchResult';
 export * from './formatDismissal';
 export * from './matchAwards';

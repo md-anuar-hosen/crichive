@@ -35,9 +35,11 @@ export type JsonPrimitive = boolean | number | string | null;
 
 export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
-export type MatchResult = "abandoned" | "no_result" | "team_a_won" | "team_b_won" | "tie";
+export type MatchFormat = "limited_overs" | "test";
 
-export type MatchStatus = "abandoned" | "cancelled" | "completed" | "forfeited" | "innings_break" | "live" | "scheduled" | "super_over" | "toss_done";
+export type MatchResult = "abandoned" | "draw" | "no_result" | "team_a_won" | "team_b_won" | "tie";
+
+export type MatchStatus = "abandoned" | "cancelled" | "completed" | "day_break" | "forfeited" | "innings_break" | "live" | "scheduled" | "super_over" | "toss_done";
 
 export type Numeric = ColumnType<string, number | string, number | string>;
 
@@ -160,6 +162,7 @@ export interface Innings {
   batting_team_id: string;
   bowling_team_id: string;
   closed_at: Timestamp | null;
+  declared: Generated<boolean>;
   id: Generated<string>;
   innings_number: number;
   is_super_over: Generated<boolean>;
@@ -183,6 +186,7 @@ export interface Matches {
   bracket_seed_a: number | null;
   bracket_seed_b: number | null;
   created_at: Generated<Timestamp>;
+  current_day: Generated<number>;
   ground_id: string | null;
   group_id: string | null;
   id: Generated<string>;
@@ -410,6 +414,7 @@ export interface Stages {
 export interface Standings {
   balls_bowled: Generated<number>;
   balls_faced: Generated<number>;
+  drawn: Generated<number>;
   group_id: string;
   lost: Generated<number>;
   net_run_rate: Generated<Numeric>;
@@ -462,12 +467,17 @@ export interface TournamentMemberships {
 export interface TournamentRules {
   balls_per_over: Generated<number>;
   bonus_point_enabled: Generated<boolean>;
+  days_per_match: number | null;
   dls_enabled: Generated<boolean>;
+  follow_on_enabled: Generated<boolean>;
+  follow_on_margin: Generated<number>;
   free_hit_after_noball: Generated<boolean>;
-  max_overs_per_bowler: number;
+  match_type: Generated<MatchFormat>;
+  max_overs_per_bowler: number | null;
   noball_runs: Generated<number>;
-  overs_per_innings: number;
+  overs_per_innings: number | null;
   players_per_side: Generated<number>;
+  points_draw: Generated<number>;
   points_loss: Generated<number>;
   points_no_result: Generated<number>;
   points_tie: Generated<number>;

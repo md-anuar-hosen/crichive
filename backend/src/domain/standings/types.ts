@@ -1,10 +1,11 @@
-export type MatchOutcomeForTeam = 'win' | 'loss' | 'tie' | 'no_result';
+export type MatchOutcomeForTeam = 'win' | 'loss' | 'tie' | 'no_result' | 'draw';
 
 export interface PointsRules {
   pointsWin: number;
   pointsTie: number;
   pointsNoResult: number;
   pointsLoss: number;
+  pointsDraw: number;
 }
 
 /**
@@ -33,6 +34,7 @@ export interface StandingsRow {
   lost: number;
   tied: number;
   noResult: number;
+  drawn: number;
   points: number;
   netRunRate: number;
 }

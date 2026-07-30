@@ -1,6 +1,7 @@
 import { db } from '../db/index';
-import { formatDismissal } from '../domain/scoring';
+import { formatDismissal, isFollowOnEligible } from '../domain/scoring';
 import { serializeGround, serializePlayer } from '../serializers/public';
+import { loadTournamentRules } from './rules';
 
 /**
  * Full match scorecard, read entirely from derived tables (innings_totals,
@@ -17,10 +18,12 @@ export async function getMatchScorecard(matchId: string) {
     .leftJoin('players as player_of_match', 'player_of_match.id', 'matches.player_of_match_id')
     .select([
       'matches.id',
+      'matches.tournament_id',
       'matches.match_number',
       'matches.scheduled_start',
       'matches.actual_start',
       'matches.status',
+      'matches.current_day',
       'matches.toss_decision',
       'matches.toss_winner_id',
       'matches.result',
@@ -46,6 +49,8 @@ export async function getMatchScorecard(matchId: string) {
     .executeTakeFirst();
 
   if (!match) return null;
+
+  const rules = await loadTournamentRules(db, match.tournament_id);
 
   const inningsRows = await db
     .selectFrom('innings')
@@ -166,6 +171,7 @@ export async function getMatchScorecard(matchId: string) {
         is_super_over: inn.is_super_over,
         target: inn.target,
         max_overs: inn.max_overs,
+        declared: inn.declared,
         closed_at: inn.closed_at,
         totals: totals
           ? { runs: totals.runs, wickets: totals.wickets, legal_balls: totals.legal_balls, extras: totals.extras }
@@ -210,6 +216,17 @@ export async function getMatchScorecard(matchId: string) {
     }),
   );
 
+  // Only meaningful for a Test match sitting right at the innings 2 -> 3
+  // transition: whether the side that just bowled second may enforce a
+  // follow-on. The organizer decides via POST /matches/:id/next-innings.
+  const closedInnings = innings.filter((i) => i.closed_at !== null);
+  const followOnAvailable =
+    rules.matchType === 'test' &&
+    match.status === 'innings_break' &&
+    closedInnings.length === 2 &&
+    innings.every((i) => i.innings_number <= 2) &&
+    isFollowOnEligible({ runs: closedInnings[0].totals?.runs ?? 0 }, { runs: closedInnings[1].totals?.runs ?? 0 }, rules);
+
   return {
     id: match.id,
     match_number: match.match_number,
@@ -217,6 +234,10 @@ export async function getMatchScorecard(matchId: string) {
     scheduled_start: match.scheduled_start,
     actual_start: match.actual_start,
     status: match.status,
+    match_type: rules.matchType,
+    current_day: match.current_day,
+    days_per_match: rules.daysPerMatch,
+    follow_on_available: followOnAvailable,
     toss_decision: match.toss_decision,
     toss_winner_id: match.toss_winner_id,
     result: match.result,

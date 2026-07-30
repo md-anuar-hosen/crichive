@@ -9,6 +9,8 @@ import {
 import type { Delivery, DeliveryProposal, TournamentRules } from '../../src/domain/scoring';
 
 const rules: TournamentRules = {
+  matchType: 'limited_overs',
+  daysPerMatch: null,
   oversPerInnings: 10,
   ballsPerOver: 6,
   maxOversPerBowler: 2,
@@ -21,8 +23,11 @@ const rules: TournamentRules = {
   pointsTie: 1,
   pointsNoResult: 1,
   pointsLoss: 0,
+  pointsDraw: 0,
   superOverOnTie: true,
   dlsEnabled: false,
+  followOnEnabled: false,
+  followOnMargin: 0,
 };
 
 function makeDelivery(overrides: Partial<Delivery> & Pick<Delivery, 'sequence' | 'ballInOver'>): Delivery {
