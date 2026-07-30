@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../models/bracket.dart';
 import '../models/fixture.dart';
+import '../models/team.dart';
 import '../state/auth_controller.dart';
 import '../state/providers.dart';
 import '../widgets/async_value_view.dart';
+import 'create_bracket_screen.dart';
 import 'tournament_rules_screen.dart';
 
 class TournamentDetailScreen extends ConsumerWidget {
@@ -21,7 +24,7 @@ class TournamentDetailScreen extends ConsumerWidget {
     final isAuthed = ref.watch(authControllerProvider).status == AuthStatus.authenticated;
 
     return DefaultTabController(
-      length: 4,
+      length: 5,
       initialIndex: initialTabIndex,
       child: Scaffold(
         appBar: AppBar(
@@ -40,7 +43,8 @@ class TournamentDetailScreen extends ConsumerWidget {
               ),
           ],
           bottom: const TabBar(
-            tabs: [Tab(text: 'Fixtures'), Tab(text: 'Teams'), Tab(text: 'Standings'), Tab(text: 'Awards')],
+            isScrollable: true,
+            tabs: [Tab(text: 'Fixtures'), Tab(text: 'Teams'), Tab(text: 'Standings'), Tab(text: 'Bracket'), Tab(text: 'Awards')],
           ),
         ),
         body: TabBarView(
@@ -48,6 +52,7 @@ class TournamentDetailScreen extends ConsumerWidget {
             _FixturesTab(slug: slug),
             _TeamsTab(slug: slug),
             _StandingsTab(slug: slug),
+            _BracketTab(slug: slug),
             _AwardsTab(slug: slug),
           ],
         ),
@@ -209,6 +214,111 @@ class _StandingsTab extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _BracketTab extends ConsumerWidget {
+  const _BracketTab({required this.slug});
+  final String slug;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAuthed = ref.watch(authControllerProvider).status == AuthStatus.authenticated;
+    final bracket = ref.watch(knockoutBracketProvider(slug));
+    return AsyncValueView(
+      value: bracket,
+      onRetry: () => ref.invalidate(knockoutBracketProvider(slug)),
+      data: (context, b) {
+        if (!b.exists) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.emoji_events_outlined, size: 40),
+                  const SizedBox(height: 12),
+                  const Text('No knockout bracket yet.', textAlign: TextAlign.center),
+                  if (isAuthed) ...[
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: () async {
+                        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => CreateBracketScreen(tournamentSlug: slug)));
+                        ref.invalidate(knockoutBracketProvider(slug));
+                      },
+                      child: const Text('Generate bracket'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            for (final round in b.rounds) ...[
+              Text(round.name, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              for (final match in round.matches) _BracketMatchCard(match: match),
+              const SizedBox(height: 16),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _BracketMatchCard extends StatelessWidget {
+  const _BracketMatchCard({required this.match});
+  final BracketMatch match;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: match.isDecided ? () => context.push('/matches/${match.id}') : null,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _BracketTeamLine(seed: match.seedA, team: match.teamA, isWinner: match.winnerTeamId != null && match.teamA?.id == match.winnerTeamId),
+              const SizedBox(height: 4),
+              _BracketTeamLine(seed: match.seedB, team: match.teamB, isWinner: match.winnerTeamId != null && match.teamB?.id == match.winnerTeamId),
+              if (match.resultNote != null) ...[
+                const SizedBox(height: 6),
+                Text(match.resultNote!, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BracketTeamLine extends StatelessWidget {
+  const _BracketTeamLine({required this.seed, required this.team, required this.isWinner});
+  final int? seed;
+  final Team? team;
+  final bool isWinner;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: isWinner ? FontWeight.bold : FontWeight.normal);
+    return Row(
+      children: [
+        if (seed != null) ...[
+          Text('$seed', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline)),
+          const SizedBox(width: 8),
+        ],
+        Expanded(child: Text(team?.name ?? 'TBD', style: style)),
+        if (isWinner) const Icon(Icons.emoji_events, size: 16),
+      ],
     );
   }
 }

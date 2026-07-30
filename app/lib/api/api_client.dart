@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../models/bracket.dart';
 import '../models/delivery.dart';
 import '../models/delivery_result.dart';
 import '../models/fixture.dart';
@@ -267,6 +268,16 @@ class ApiClient {
   Future<Paginated<Team>> getTeams(String slug, {int page = 1, int limit = 50}) async {
     final res = await _dio.get('/tournaments/$slug/teams', queryParameters: {'page': page, 'limit': limit});
     return Paginated.fromJson(res.data as Map<String, dynamic>, Team.fromJson);
+  }
+
+  Future<KnockoutBracket> getKnockoutBracket(String slug) async {
+    final res = await _dio.get('/tournaments/$slug/knockout');
+    return KnockoutBracket.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  /// [teamIdsBySeed] is seed order — first entry is the top seed. Organiser-only.
+  Future<void> createKnockoutBracket(String slug, {String? name, required List<String> teamIdsBySeed}) async {
+    await _dio.post('/tournaments/$slug/knockout', data: {if (name != null && name.isNotEmpty) 'name': name, 'team_ids': teamIdsBySeed});
   }
 
   Future<Paginated<Fixture>> getFixtures(

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/api_client.dart';
+import '../models/bracket.dart';
 import '../models/delivery.dart';
 import '../models/fixture.dart';
 import '../models/live_match.dart';
@@ -44,6 +45,10 @@ final fixturesProvider = FutureProvider.family<Paginated<Fixture>, String>((ref,
 
 final standingsProvider = FutureProvider.family<List<StandingGroup>, String>((ref, slug) {
   return ref.watch(apiClientProvider).getStandings(slug);
+});
+
+final knockoutBracketProvider = FutureProvider.family<KnockoutBracket, String>((ref, slug) {
+  return ref.watch(apiClientProvider).getKnockoutBracket(slug);
 });
 
 final awardsProvider = FutureProvider.family<TournamentAwards, String>((ref, slug) {
