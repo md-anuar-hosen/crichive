@@ -5,6 +5,7 @@ import { db } from '../db/index';
 import { requireAuth, requireTournamentRole } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/platformAdmin';
 import { writeAuditLog } from '../services/auditLog';
+import { serializeTournament } from '../serializers/public';
 
 const router = Router();
 
@@ -175,9 +176,7 @@ router.post('/tournaments', requireAuth, async (req, res) => {
       return created;
     });
 
-    res.status(201).json({
-      tournament: { id: tournament.id, slug: tournament.slug, name: tournament.name, is_public: tournament.is_public, is_approved: tournament.approved_at !== null },
-    });
+    res.status(201).json({ tournament: { ...serializeTournament(tournament), is_public: tournament.is_public } });
   } catch (err) {
     if (isUniqueViolation(err)) {
       res.status(409).json({ error: 'That slug is already taken' });
