@@ -10,6 +10,7 @@ import publicRouter from './routes/public';
 import scoringRouter from './routes/scoring';
 import dataRequestsRouter from './routes/dataRequests';
 import squadsRouter from './routes/squads';
+import scorersRouter from './routes/scorers';
 import tournamentsRouter from './routes/tournaments';
 import bracketsRouter from './routes/brackets';
 import { attachRealtimeServer } from './realtime/server';
@@ -63,6 +64,7 @@ app.use(publicRateLimit, bracketsRouter);
 app.use(publicRateLimit, publicRouter);
 app.use(publicRateLimit, dataRequestsRouter);
 app.use(publicRateLimit, squadsRouter);
+app.use(publicRateLimit, scorersRouter);
 
 if (process.env.NODE_ENV !== 'test') {
   const port = process.env.PORT ?? 3000;

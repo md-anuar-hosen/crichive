@@ -52,6 +52,14 @@ export async function getMatchScorecard(matchId: string) {
 
   const rules = await loadTournamentRules(db, match.tournament_id);
 
+  const assignedScorerRows = await db
+    .selectFrom('match_scorers')
+    .innerJoin('users', 'users.id', 'match_scorers.user_id')
+    .select(['users.id', 'users.display_name'])
+    .where('match_scorers.match_id', '=', match.id)
+    .orderBy('users.display_name', 'asc')
+    .execute();
+
   const inningsRows = await db
     .selectFrom('innings')
     .selectAll()
@@ -238,6 +246,7 @@ export async function getMatchScorecard(matchId: string) {
     current_day: match.current_day,
     days_per_match: rules.daysPerMatch,
     follow_on_available: followOnAvailable,
+    assigned_scorers: assignedScorerRows.map((r) => ({ id: r.id, display_name: r.display_name })),
     toss_decision: match.toss_decision,
     toss_winner_id: match.toss_winner_id,
     result: match.result,

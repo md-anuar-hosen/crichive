@@ -43,6 +43,19 @@ export function requireMatchRole(...allowedRoles: TournamentRole[]) {
       return;
     }
 
+    // A tournament-wide 'scorer' grant only makes someone eligible to be
+    // assigned to specific matches (see routes/scorers.ts) — with several
+    // matches running at once, letting any tournament scorer touch any
+    // match is exactly the mix-up per-match assignment exists to prevent.
+    // The organizer themselves is never restricted this way.
+    if (membership.role === 'scorer') {
+      const assignment = await db.selectFrom('match_scorers').select('user_id').where('match_id', '=', match.id).where('user_id', '=', req.user.sub).executeTakeFirst();
+      if (!assignment) {
+        res.status(403).json({ error: 'You are not assigned to score this match' });
+        return;
+      }
+    }
+
     next();
   };
 }
