@@ -8,7 +8,12 @@ import '../widgets/async_value_view.dart';
 
 /// Both teams' squads for a single match, Cricbuzz "Squads" tab style.
 class MatchSquadsScreen extends StatelessWidget {
-  const MatchSquadsScreen({super.key, required this.tournamentSlug, required this.teamA, required this.teamB});
+  const MatchSquadsScreen({
+    super.key,
+    required this.tournamentSlug,
+    required this.teamA,
+    required this.teamB,
+  });
 
   final String tournamentSlug;
   final TeamRef teamA;
@@ -21,7 +26,12 @@ class MatchSquadsScreen extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Squads'),
-          bottom: TabBar(tabs: [Tab(text: teamA.label), Tab(text: teamB.label)]),
+          bottom: TabBar(
+            tabs: [
+              Tab(text: teamA.label),
+              Tab(text: teamB.label),
+            ],
+          ),
         ),
         body: TabBarView(
           children: [
@@ -41,37 +51,68 @@ class _TeamSquadList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final squad = ref.watch(squadProvider((teamId: teamId, tournamentSlug: tournamentSlug)));
+    final squad = ref.watch(
+      squadProvider((teamId: teamId, tournamentSlug: tournamentSlug)),
+    );
 
-    return AsyncValueView(
-      value: squad,
-      onRetry: () => ref.invalidate(squadProvider((teamId: teamId, tournamentSlug: tournamentSlug))),
-      data: (context, players) {
-        if (players.isEmpty) {
-          return const EmptyState(message: 'Squad not announced yet.');
-        }
-        return ListView.separated(
-          itemCount: players.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final p = players[index];
-            final roles = [p.batting, p.bowling].whereType<String>().join(' · ');
-            return ListTile(
-              leading: CircleAvatar(child: Text(p.jerseyNumber?.toString() ?? '?')),
-              title: Text(p.name),
-              subtitle: roles.isEmpty ? null : Text(roles),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (p.isCaptain) const Padding(padding: EdgeInsets.only(right: 4), child: Chip(label: Text('C'), visualDensity: VisualDensity.compact)),
-                  if (p.isKeeper) const Chip(label: Text('WK'), visualDensity: VisualDensity.compact),
-                ],
-              ),
-              onTap: () => context.push('/players/${p.id}'),
-            );
-          },
+    return RefreshIndicator(
+      onRefresh: () async {
+        final _ = await ref.refresh(
+          squadProvider((
+            teamId: teamId,
+            tournamentSlug: tournamentSlug,
+          )).future,
         );
       },
+      child: AsyncValueView(
+        value: squad,
+        onRetry: () => ref.invalidate(
+          squadProvider((teamId: teamId, tournamentSlug: tournamentSlug)),
+        ),
+        data: (context, players) {
+          if (players.isEmpty) {
+            return const EmptyState(message: 'Squad not announced yet.');
+          }
+          return ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: players.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final p = players[index];
+              final roles = [
+                p.batting,
+                p.bowling,
+              ].whereType<String>().join(' · ');
+              return ListTile(
+                leading: CircleAvatar(
+                  child: Text(p.jerseyNumber?.toString() ?? '?'),
+                ),
+                title: Text(p.name),
+                subtitle: roles.isEmpty ? null : Text(roles),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (p.isCaptain)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 4),
+                        child: Chip(
+                          label: Text('C'),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    if (p.isKeeper)
+                      const Chip(
+                        label: Text('WK'),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                onTap: () => context.push('/players/${p.id}'),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }

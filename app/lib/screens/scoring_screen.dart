@@ -55,6 +55,14 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
 
   final _commentaryController = TextEditingController();
 
+  // Set fresh on every build (see build()) — read here rather than passed
+  // as a build-time-only local, since _pendingFromForm runs from a button
+  // callback outside build()'s scope. Default to the common case (1 run
+  // for a wide/no-ball) only for the brief window before the tournament's
+  // rules have loaded, same convention as match_screen.dart's ballsPerOver.
+  int _wideRuns = 1;
+  int _noballRuns = 1;
+
   @override
   void initState() {
     super.initState();
@@ -70,10 +78,10 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
   @override
   Widget build(BuildContext context) {
     final match = ref.watch(matchProvider(widget.matchId));
-    final ballsPerOver = match.whenOrNull(
-          data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules?.ballsPerOver,
-        ) ??
-        6;
+    final rules = match.whenOrNull(data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules);
+    final ballsPerOver = rules?.ballsPerOver ?? 6;
+    _wideRuns = rules?.wideRuns ?? 1;
+    _noballRuns = rules?.noballRuns ?? 1;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Score')),
@@ -271,8 +279,8 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
         nonStrikerId: _nonStrikerId!,
         bowlerId: _bowlerId!,
         runsOffBat: _mode == _BallMode.legal || _mode == _BallMode.noBall ? _runs : 0,
-        extraWides: _mode == _BallMode.wide ? 1 + _runs : 0,
-        extraNoballs: _mode == _BallMode.noBall ? 1 : 0,
+        extraWides: _mode == _BallMode.wide ? _wideRuns + _runs : 0,
+        extraNoballs: _mode == _BallMode.noBall ? _noballRuns : 0,
         extraByes: _mode == _BallMode.bye ? _runs : 0,
         extraLegbyes: _mode == _BallMode.legBye ? _runs : 0,
         extraPenalty: 0,

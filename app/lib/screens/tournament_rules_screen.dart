@@ -127,7 +127,8 @@ class _RulesFormState extends ConsumerState<_RulesForm> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('DLS enabled'),
+            title: const Text('CricHive Rain Rule enabled'),
+            subtitle: const Text('Revises the target after a rain interruption. Not the official DLS method.'),
             value: _dlsEnabled,
             onChanged: (v) => setState(() => _dlsEnabled = v),
           ),

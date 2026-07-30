@@ -47,9 +47,21 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     super.dispose();
   }
 
-  void _onScoringAction(BuildContext context, String action, MatchDetail match) {
+  void _onScoringAction(
+    BuildContext context,
+    String action,
+    MatchDetail match,
+  ) {
     if (action == 'abandon') {
       _showAbandonDialog(context, match.id);
+      return;
+    }
+    if (action == 'cancel') {
+      _showCancelDialog(context, match.id);
+      return;
+    }
+    if (action == 'forfeit') {
+      _showForfeitDialog(context, match);
       return;
     }
     if (action == 'interruption') {
@@ -91,19 +103,27 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('This ends the match now as a no-result. This cannot be undone.'),
+            const Text(
+              'This ends the match now as a no-result. This cannot be undone.',
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
-              decoration: const InputDecoration(labelText: 'Reason (e.g. rain)'),
+              decoration: const InputDecoration(
+                labelText: 'Reason (e.g. rain)',
+              ),
               autofocus: true,
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
             child: const Text('Abandon'),
           ),
         ],
@@ -115,20 +135,171 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
       await ref.read(apiClientProvider).abandonMatch(matchId, reason: reason);
       ref.invalidate(matchProvider(matchId));
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Match abandoned')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Match abandoned')));
     } on ApiException catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
-  Future<void> _showInterruptionDialog(BuildContext context, MatchDetail match) async {
-    final openInnings = match.innings.where((i) => i.closedAt == null).lastOrNull;
+  Future<void> _showCancelDialog(BuildContext context, String matchId) async {
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel match'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'For a match that never started — a washout before the toss, a team withdrawing. This cannot be undone.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(labelText: 'Reason'),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('Cancel match'),
+          ),
+        ],
+      ),
+    );
+    if (reason == null || reason.isEmpty || !mounted) return;
+
+    try {
+      await ref.read(apiClientProvider).cancelMatch(matchId, reason: reason);
+      ref.invalidate(matchProvider(matchId));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Match cancelled')));
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _showForfeitDialog(
+    BuildContext context,
+    MatchDetail match,
+  ) async {
+    var winnerId = match.teamA.id;
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setState) => AlertDialog(
+          title: const Text('Record forfeit'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'The other team wins by forfeit — this counts as a normal result. This cannot be undone.',
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Winner',
+                style: Theme.of(dialogContext).textTheme.labelLarge,
+              ),
+              RadioGroup<String>(
+                groupValue: winnerId,
+                onChanged: (v) => setState(() => winnerId = v!),
+                child: Column(
+                  children: [
+                    RadioListTile<String>(
+                      title: Text(match.teamA.name),
+                      value: match.teamA.id,
+                    ),
+                    RadioListTile<String>(
+                      title: Text(match.teamB.name),
+                      value: match.teamB.id,
+                    ),
+                  ],
+                ),
+              ),
+              TextField(
+                controller: reasonController,
+                decoration: const InputDecoration(
+                  labelText: 'Reason (optional)',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Back'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Record forfeit'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await ref
+          .read(apiClientProvider)
+          .forfeitMatch(
+            match.id,
+            winnerTeamId: winnerId,
+            reason: reasonController.text.trim().isEmpty
+                ? null
+                : reasonController.text.trim(),
+          );
+      ref.invalidate(matchProvider(match.id));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Forfeit recorded')));
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _showInterruptionDialog(
+    BuildContext context,
+    MatchDetail match,
+  ) async {
+    final openInnings = match.innings
+        .where((i) => i.closedAt == null)
+        .lastOrNull;
     if (openInnings == null) return;
 
-    final ballsPerOver = ref.read(tournamentProvider(match.tournamentSlug)).valueOrNull?.rules?.ballsPerOver ?? 6;
+    final ballsPerOver =
+        ref
+            .read(tournamentProvider(match.tournamentSlug))
+            .valueOrNull
+            ?.rules
+            ?.ballsPerOver ??
+        6;
     final legalBalls = openInnings.totals?.legalBalls ?? 0;
-    final oversRemainingBefore = openInnings.maxOvers - (legalBalls / ballsPerOver);
+    final oversRemainingBefore =
+        openInnings.maxOvers - (legalBalls / ballsPerOver);
 
     final oversController = TextEditingController();
     final reasonController = TextEditingController();
@@ -147,19 +318,28 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: oversController,
-              decoration: const InputDecoration(labelText: 'Overs remaining after stoppage'),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Overs remaining after stoppage',
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               autofocus: true,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: reasonController,
-              decoration: const InputDecoration(labelText: 'Reason (e.g. rain)'),
+              decoration: const InputDecoration(
+                labelText: 'Reason (e.g. rain)',
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () {
               final value = double.tryParse(oversController.text.trim());
@@ -173,7 +353,9 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     if (result == null || !mounted) return;
 
     try {
-      await ref.read(apiClientProvider).recordInterruption(
+      await ref
+          .read(apiClientProvider)
+          .recordInterruption(
             match.id,
             openInnings.inningsNumber,
             oversRemainingAfter: result,
@@ -181,10 +363,14 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
           );
       ref.invalidate(matchProvider(match.id));
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Interruption recorded, target revised')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Interruption recorded, target revised')),
+      );
     } on ApiException catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -192,21 +378,37 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
   Widget build(BuildContext context) {
     final match = ref.watch(matchProvider(widget.matchId));
     match.whenData(_ensureRealtimeFor);
-    final isAuthed = ref.watch(authControllerProvider).status == AuthStatus.authenticated;
+    final isAuthed =
+        ref.watch(authControllerProvider).status == AuthStatus.authenticated;
 
     // players_per_side/balls_per_over come from tournament_rules, not
     // hardcoded — see CLAUDE.md. Defaults only cover the brief window
     // before the tournament fetch resolves.
-    final ballsPerOver = match.whenOrNull(
-          data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules?.ballsPerOver,
+    final ballsPerOver =
+        match.whenOrNull(
+          data: (m) => ref
+              .watch(tournamentProvider(m.tournamentSlug))
+              .valueOrNull
+              ?.rules
+              ?.ballsPerOver,
         ) ??
         6;
-    final dlsEnabled = match.whenOrNull(
-          data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules?.dlsEnabled,
+    final dlsEnabled =
+        match.whenOrNull(
+          data: (m) => ref
+              .watch(tournamentProvider(m.tournamentSlug))
+              .valueOrNull
+              ?.rules
+              ?.dlsEnabled,
         ) ??
         false;
-    final playersPerSide = match.whenOrNull(
-          data: (m) => ref.watch(tournamentProvider(m.tournamentSlug)).valueOrNull?.rules?.playersPerSide,
+    final playersPerSide =
+        match.whenOrNull(
+          data: (m) => ref
+              .watch(tournamentProvider(m.tournamentSlug))
+              .valueOrNull
+              ?.rules
+              ?.playersPerSide,
         ) ??
         11;
 
@@ -218,31 +420,65 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
             tooltip: 'Charts & commentary',
             icon: const Icon(Icons.bar_chart_outlined),
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => MatchChartsScreen(matchId: widget.matchId)),
+              MaterialPageRoute(
+                builder: (_) => MatchChartsScreen(matchId: widget.matchId),
+              ),
             ),
           ),
           if (isAuthed)
             match.whenOrNull(
-              data: (m) => PopupMenuButton<String>(
-                onSelected: (value) => _onScoringAction(context, value, m),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'toss', child: Text('Record toss')),
-                  PopupMenuItem(value: 'xi_a', child: Text('Playing XI — ${m.teamA.label}')),
-                  PopupMenuItem(value: 'xi_b', child: Text('Playing XI — ${m.teamB.label}')),
-                  const PopupMenuItem(value: 'score', child: Text('Score')),
-                  if (dlsEnabled && !_finishedStatuses.contains(m.status) && m.innings.any((i) => i.closedAt == null && !i.isSuperOver))
-                    const PopupMenuItem(
-                      value: 'interruption',
-                      child: Text('Record rain interruption'),
-                    ),
-                  if (!_finishedStatuses.contains(m.status))
-                    const PopupMenuItem(
-                      value: 'abandon',
-                      child: Text('Abandon match', style: TextStyle(color: Colors.red)),
-                    ),
-                ],
-              ),
-            ) ??
+                  data: (m) => PopupMenuButton<String>(
+                    onSelected: (value) => _onScoringAction(context, value, m),
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'toss',
+                        child: Text('Record toss'),
+                      ),
+                      PopupMenuItem(
+                        value: 'xi_a',
+                        child: Text('Playing XI — ${m.teamA.label}'),
+                      ),
+                      PopupMenuItem(
+                        value: 'xi_b',
+                        child: Text('Playing XI — ${m.teamB.label}'),
+                      ),
+                      const PopupMenuItem(value: 'score', child: Text('Score')),
+                      if (dlsEnabled &&
+                          !_finishedStatuses.contains(m.status) &&
+                          m.innings.any(
+                            (i) => i.closedAt == null && !i.isSuperOver,
+                          ))
+                        const PopupMenuItem(
+                          value: 'interruption',
+                          child: Text('Record rain interruption'),
+                        ),
+                      if (!_finishedStatuses.contains(m.status))
+                        const PopupMenuItem(
+                          value: 'abandon',
+                          child: Text(
+                            'Abandon match',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      if (m.status == 'scheduled')
+                        const PopupMenuItem(
+                          value: 'cancel',
+                          child: Text(
+                            'Cancel match',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      if (!_finishedStatuses.contains(m.status))
+                        const PopupMenuItem(
+                          value: 'forfeit',
+                          child: Text(
+                            'Record forfeit',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                    ],
+                  ),
+                ) ??
                 const SizedBox.shrink(),
         ],
       ),
@@ -253,7 +489,11 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
         child: AsyncValueView(
           value: match,
           onRetry: () => ref.invalidate(matchProvider(widget.matchId)),
-          data: (context, m) => _MatchBody(match: m, ballsPerOver: ballsPerOver, playersPerSide: playersPerSide),
+          data: (context, m) => _MatchBody(
+            match: m,
+            ballsPerOver: ballsPerOver,
+            playersPerSide: playersPerSide,
+          ),
         ),
       ),
     );
@@ -261,7 +501,11 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
 }
 
 class _MatchBody extends StatelessWidget {
-  const _MatchBody({required this.match, required this.ballsPerOver, required this.playersPerSide});
+  const _MatchBody({
+    required this.match,
+    required this.ballsPerOver,
+    required this.playersPerSide,
+  });
   final MatchDetail match;
   final int ballsPerOver;
   final int playersPerSide;
@@ -272,7 +516,10 @@ class _MatchBody extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       children: [
-        Text('${match.teamA.name} vs ${match.teamB.name}', style: Theme.of(context).textTheme.titleLarge),
+        Text(
+          '${match.teamA.name} vs ${match.teamB.name}',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
         const SizedBox(height: 4),
         Text(_headerSubtitle(), style: Theme.of(context).textTheme.bodyMedium),
         if (_tossLine() != null) ...[
@@ -283,17 +530,28 @@ class _MatchBody extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             match.resultNote!,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
         ],
         if (match.playerOfMatch != null) ...[
           const SizedBox(height: 4),
-          Text('Player of the match: ${match.playerOfMatch!.name}', style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            'Player of the match: ${match.playerOfMatch!.name}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ],
         const SizedBox(height: 16),
-        if (match.innings.isEmpty) const EmptyState(message: 'Play has not started yet.'),
+        if (match.innings.isEmpty)
+          const EmptyState(message: 'Play has not started yet.'),
         for (final innings in match.innings)
-          _InningsCard(match: match, innings: innings, ballsPerOver: ballsPerOver, playersPerSide: playersPerSide),
+          _InningsCard(
+            match: match,
+            innings: innings,
+            ballsPerOver: ballsPerOver,
+            playersPerSide: playersPerSide,
+          ),
         const SizedBox(height: 8),
         _QuickNavRow(match: match),
       ],
@@ -307,7 +565,9 @@ class _MatchBody extends StatelessWidget {
 
   String? _tossLine() {
     if (match.tossWinnerId == null || match.tossDecision == null) return null;
-    final winner = match.tossWinnerId == match.teamA.id ? match.teamA.label : match.teamB.label;
+    final winner = match.tossWinnerId == match.teamA.id
+        ? match.teamA.label
+        : match.teamB.label;
     return '$winner won the toss, elected to ${match.tossDecision}';
   }
 }
@@ -330,7 +590,9 @@ class _QuickNavRow extends StatelessWidget {
           icon: const Icon(Icons.bar_chart_outlined, size: 18),
           label: const Text('Graphs'),
           onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => MatchChartsScreen(matchId: match.id)),
+            MaterialPageRoute(
+              builder: (_) => MatchChartsScreen(matchId: match.id),
+            ),
           ),
         ),
         OutlinedButton.icon(
@@ -338,7 +600,11 @@ class _QuickNavRow extends StatelessWidget {
           label: const Text('Squads'),
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => MatchSquadsScreen(tournamentSlug: match.tournamentSlug, teamA: match.teamA, teamB: match.teamB),
+              builder: (_) => MatchSquadsScreen(
+                tournamentSlug: match.tournamentSlug,
+                teamA: match.teamA,
+                teamB: match.teamB,
+              ),
             ),
           ),
         ),
@@ -347,7 +613,10 @@ class _QuickNavRow extends StatelessWidget {
           label: const Text('Points Table'),
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => TournamentDetailScreen(slug: match.tournamentSlug, initialTabIndex: 2),
+              builder: (_) => TournamentDetailScreen(
+                slug: match.tournamentSlug,
+                initialTabIndex: 2,
+              ),
             ),
           ),
         ),
@@ -357,7 +626,12 @@ class _QuickNavRow extends StatelessWidget {
 }
 
 class _InningsCard extends StatelessWidget {
-  const _InningsCard({required this.match, required this.innings, required this.ballsPerOver, required this.playersPerSide});
+  const _InningsCard({
+    required this.match,
+    required this.innings,
+    required this.ballsPerOver,
+    required this.playersPerSide,
+  });
   final MatchDetail match;
   final InningsDetail innings;
   final int ballsPerOver;
@@ -394,14 +668,24 @@ class _InningsCard extends StatelessWidget {
                     if (innings.isSuperOver) ...[
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.tertiaryContainer,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.tertiaryContainer,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           'SUPER OVER',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onTertiaryContainer),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onTertiaryContainer,
+                              ),
                         ),
                       ),
                     ],
@@ -415,7 +699,8 @@ class _InningsCard extends StatelessWidget {
               ],
             ),
             if (totals != null) ..._buildRateLines(context, totals, isOpen),
-            if (totals != null && isOpen) ..._buildChaseHeadline(context, totals),
+            if (totals != null && isOpen)
+              ..._buildChaseHeadline(context, totals),
             if (innings.interruptions.isNotEmpty) ...[
               const SizedBox(height: 8),
               _InterruptionBanner(innings: innings),
@@ -424,7 +709,8 @@ class _InningsCard extends StatelessWidget {
               const SizedBox(height: 8),
               _KeyStatsBox(partnership: innings.partnerships.last),
             ],
-            if (totals != null && isOpen) ..._buildWinProbability(context, totals),
+            if (totals != null && isOpen)
+              ..._buildWinProbability(context, totals),
             const SizedBox(height: 12),
             if (innings.batting.isNotEmpty) ...[
               _BattingTable(rows: innings.batting),
@@ -436,18 +722,27 @@ class _InningsCard extends StatelessWidget {
             ],
             if (fallOfWickets.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text('Fall of wickets', style: Theme.of(context).textTheme.labelLarge),
+              Text(
+                'Fall of wickets',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
               const SizedBox(height: 4),
               Text(
                 fallOfWickets
-                    .map((w) => '${w.score}-${w.wicketNumber}${w.batterName != null ? ' (${w.batterName})' : ''}')
+                    .map(
+                      (w) =>
+                          '${w.score}-${w.wicketNumber}${w.batterName != null ? ' (${w.batterName})' : ''}',
+                    )
                     .join(', '),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
             if (innings.partnerships.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Text('Partnerships', style: Theme.of(context).textTheme.labelLarge),
+              Text(
+                'Partnerships',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
               const SizedBox(height: 4),
               ...innings.partnerships.map(
                 (p) => Text(
@@ -462,7 +757,11 @@ class _InningsCard extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildRateLines(BuildContext context, InningsTotals totals, bool isOpen) {
+  List<Widget> _buildRateLines(
+    BuildContext context,
+    InningsTotals totals,
+    bool isOpen,
+  ) {
     final style = Theme.of(context).textTheme.bodySmall;
     final crr = runRate(totals.runs, totals.legalBalls, ballsPerOver);
     final lines = <Widget>[Text('CRR ${crr.toStringAsFixed(2)}', style: style)];
@@ -496,14 +795,21 @@ class _InningsCard extends StatelessWidget {
   /// The bold red "{Team} need N runs in M balls" headline, Cricbuzz-style.
   List<Widget> _buildChaseHeadline(BuildContext context, InningsTotals totals) {
     if (innings.target == null) return const [];
-    final remaining = ballsRemaining(maxOvers: innings.maxOvers, ballsPerOver: ballsPerOver, legalBallsBowled: totals.legalBalls);
+    final remaining = ballsRemaining(
+      maxOvers: innings.maxOvers,
+      ballsPerOver: ballsPerOver,
+      legalBallsBowled: totals.legalBalls,
+    );
     final runsNeeded = innings.target! - totals.runs;
     if (remaining <= 0 || runsNeeded <= 0) return const [];
     return [
       const SizedBox(height: 4),
       Text(
         '${_teamName(innings.battingTeamId)} need $runsNeeded runs in $remaining balls',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.red.shade700, fontWeight: FontWeight.bold),
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: Colors.red.shade700,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     ];
   }
@@ -511,9 +817,16 @@ class _InningsCard extends StatelessWidget {
   /// "CricHive Win Predictor" — our own simplified heuristic (required vs.
   /// current run rate, discounted by wickets in hand), not a statistical
   /// model. Only shown once there's enough data for it to mean anything.
-  List<Widget> _buildWinProbability(BuildContext context, InningsTotals totals) {
+  List<Widget> _buildWinProbability(
+    BuildContext context,
+    InningsTotals totals,
+  ) {
     if (innings.target == null || totals.legalBalls == 0) return const [];
-    final remaining = ballsRemaining(maxOvers: innings.maxOvers, ballsPerOver: ballsPerOver, legalBallsBowled: totals.legalBalls);
+    final remaining = ballsRemaining(
+      maxOvers: innings.maxOvers,
+      ballsPerOver: ballsPerOver,
+      legalBallsBowled: totals.legalBalls,
+    );
     final runsNeeded = innings.target! - totals.runs;
     if (remaining <= 0 || runsNeeded <= 0) return const [];
 
@@ -527,7 +840,10 @@ class _InningsCard extends StatelessWidget {
     if (rrr == null) return const [];
     final crr = runRate(totals.runs, totals.legalBalls, ballsPerOver);
     final wicketsAvailable = playersPerSide - 1;
-    final wicketsInHand = (wicketsAvailable - totals.wickets).clamp(0, wicketsAvailable);
+    final wicketsInHand = (wicketsAvailable - totals.wickets).clamp(
+      0,
+      wicketsAvailable,
+    );
     final chasingProbability = chasingTeamWinProbability(
       requiredRunRate: rrr,
       currentRunRate: crr,
@@ -562,12 +878,26 @@ class _BattingTable extends StatelessWidget {
   static const _srWidth = 56.0;
   static const _totalWidth = _nameWidth + _numWidth * 4 + _srWidth;
 
-  Widget _cell(String text, double width, {TextAlign align = TextAlign.end, TextStyle? style}) =>
-      SizedBox(width: width, child: Text(text, textAlign: align, style: style, overflow: TextOverflow.ellipsis));
+  Widget _cell(
+    String text,
+    double width, {
+    TextAlign align = TextAlign.end,
+    TextStyle? style,
+  }) => SizedBox(
+    width: width,
+    child: Text(
+      text,
+      textAlign: align,
+      style: style,
+      overflow: TextOverflow.ellipsis,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final headerStyle = Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline);
+    final headerStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
+      color: Theme.of(context).colorScheme.outline,
+    );
     final bodyStyle = Theme.of(context).textTheme.bodySmall;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -583,7 +913,12 @@ class _BattingTable extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    _cell('Batter', _nameWidth, align: TextAlign.start, style: headerStyle),
+                    _cell(
+                      'Batter',
+                      _nameWidth,
+                      align: TextAlign.start,
+                      style: headerStyle,
+                    ),
                     _cell('R', _numWidth, style: headerStyle),
                     _cell('B', _numWidth, style: headerStyle),
                     _cell('4s', _numWidth, style: headerStyle),
@@ -604,20 +939,35 @@ class _BattingTable extends StatelessWidget {
                               b.name,
                               _nameWidth,
                               align: TextAlign.start,
-                              style: bodyStyle?.copyWith(fontWeight: b.isOut ? FontWeight.normal : FontWeight.bold),
+                              style: bodyStyle?.copyWith(
+                                fontWeight: b.isOut
+                                    ? FontWeight.normal
+                                    : FontWeight.bold,
+                              ),
                             ),
                             _cell('${b.runs}', _numWidth, style: bodyStyle),
-                            _cell('${b.ballsFaced}', _numWidth, style: bodyStyle),
+                            _cell(
+                              '${b.ballsFaced}',
+                              _numWidth,
+                              style: bodyStyle,
+                            ),
                             _cell('${b.fours}', _numWidth, style: bodyStyle),
                             _cell('${b.sixes}', _numWidth, style: bodyStyle),
-                            _cell(b.strikeRate.toStringAsFixed(2), _srWidth, style: bodyStyle),
+                            _cell(
+                              b.strikeRate.toStringAsFixed(2),
+                              _srWidth,
+                              style: bodyStyle,
+                            ),
                           ],
                         ),
                         SizedBox(
                           width: _totalWidth,
                           child: Text(
                             b.isOut ? (b.dismissalText ?? 'out') : 'not out',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -643,12 +993,26 @@ class _BowlingTable extends StatelessWidget {
   static const _econWidth = 56.0;
   static const _totalWidth = _nameWidth + _numWidth * 5 + _econWidth;
 
-  Widget _cell(String text, double width, {TextAlign align = TextAlign.end, TextStyle? style}) =>
-      SizedBox(width: width, child: Text(text, textAlign: align, style: style, overflow: TextOverflow.ellipsis));
+  Widget _cell(
+    String text,
+    double width, {
+    TextAlign align = TextAlign.end,
+    TextStyle? style,
+  }) => SizedBox(
+    width: width,
+    child: Text(
+      text,
+      textAlign: align,
+      style: style,
+      overflow: TextOverflow.ellipsis,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final headerStyle = Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline);
+    final headerStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
+      color: Theme.of(context).colorScheme.outline,
+    );
     final bodyStyle = Theme.of(context).textTheme.bodySmall;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -664,7 +1028,12 @@ class _BowlingTable extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    _cell('Bowler', _nameWidth, align: TextAlign.start, style: headerStyle),
+                    _cell(
+                      'Bowler',
+                      _nameWidth,
+                      align: TextAlign.start,
+                      style: headerStyle,
+                    ),
                     _cell('O', _numWidth, style: headerStyle),
                     _cell('M', _numWidth, style: headerStyle),
                     _cell('R', _numWidth, style: headerStyle),
@@ -679,12 +1048,25 @@ class _BowlingTable extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 2),
                     child: Row(
                       children: [
-                        _cell(b.name, _nameWidth, align: TextAlign.start, style: bodyStyle),
-                        _cell(b.oversDisplay(ballsPerOver), _numWidth, style: bodyStyle),
+                        _cell(
+                          b.name,
+                          _nameWidth,
+                          align: TextAlign.start,
+                          style: bodyStyle,
+                        ),
+                        _cell(
+                          b.oversDisplay(ballsPerOver),
+                          _numWidth,
+                          style: bodyStyle,
+                        ),
                         _cell('${b.maidens}', _numWidth, style: bodyStyle),
                         _cell('${b.runsConceded}', _numWidth, style: bodyStyle),
                         _cell('${b.wickets}', _numWidth, style: bodyStyle),
-                        _cell(b.economy(ballsPerOver).toStringAsFixed(2), _econWidth, style: bodyStyle),
+                        _cell(
+                          b.economy(ballsPerOver).toStringAsFixed(2),
+                          _econWidth,
+                          style: bodyStyle,
+                        ),
                         _cell('${b.dots}', _numWidth, style: bodyStyle),
                       ],
                     ),
@@ -711,7 +1093,10 @@ class _KeyStatsBox extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(color: colors.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: Row(
         children: [
           Icon(Icons.groups_outlined, size: 16, color: colors.outline),
@@ -755,7 +1140,9 @@ class _WinProbabilityBar extends StatelessWidget {
       children: [
         Text(
           'CricHive Win Predictor',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: Theme.of(context).colorScheme.outline,
+          ),
         ),
         const SizedBox(height: 4),
         Row(
@@ -763,11 +1150,17 @@ class _WinProbabilityBar extends StatelessWidget {
           children: [
             Text(
               '$defendingLabel ${defendingProbability.round()}%',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: defendingColor, fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: defendingColor,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             Text(
               '${chasingProbability.round()}% $chasingLabel',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: chasingColor, fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: chasingColor,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
@@ -778,8 +1171,14 @@ class _WinProbabilityBar extends StatelessWidget {
             height: 8,
             child: Row(
               children: [
-                Expanded(flex: defendingFlex, child: Container(color: defendingColor)),
-                Expanded(flex: chasingFlex, child: Container(color: chasingColor)),
+                Expanded(
+                  flex: defendingFlex,
+                  child: Container(color: defendingColor),
+                ),
+                Expanded(
+                  flex: chasingFlex,
+                  child: Container(color: chasingColor),
+                ),
               ],
             ),
           ),
@@ -815,15 +1214,19 @@ class _InterruptionBanner extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.umbrella_outlined, size: 16, color: colors.onTertiaryContainer),
+              Icon(
+                Icons.umbrella_outlined,
+                size: 16,
+                color: colors.onTertiaryContainer,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   headline,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colors.onTertiaryContainer,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    color: colors.onTertiaryContainer,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -834,7 +1237,9 @@ class _InterruptionBanner extends StatelessWidget {
               child: Text(
                 '${event.oversRemainingBefore.toStringAsFixed(1)} → ${event.oversRemainingAfter.toStringAsFixed(1)} overs remaining at '
                 '${event.wicketsLostAt} wkt(s)${event.reason != null && event.reason!.isNotEmpty ? ' — ${event.reason}' : ''}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.onTertiaryContainer),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colors.onTertiaryContainer,
+                ),
               ),
             ),
         ],

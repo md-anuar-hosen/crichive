@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/api_client.dart';
 import '../models/bracket.dart';
+import '../models/data_request.dart';
 import '../models/delivery.dart';
 import '../models/fixture.dart';
 import '../models/live_match.dart';
@@ -35,6 +36,10 @@ final platformSettingsProvider = FutureProvider<PlatformSettings>((ref) {
 
 final pendingTournamentsProvider = FutureProvider<List<PendingTournament>>((ref) {
   return ref.watch(apiClientProvider).getPendingTournaments();
+});
+
+final dataRequestsProvider = FutureProvider.family<List<DataRequest>, String?>((ref, status) {
+  return ref.watch(apiClientProvider).getDataRequests(status: status);
 });
 
 final teamsProvider = FutureProvider.family<Paginated<Team>, String>((ref, slug) {

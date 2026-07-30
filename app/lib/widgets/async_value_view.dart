@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../api/api_exception.dart';
+
 /// Renders loading / error / data states consistently so no screen ships a
 /// bare spinner-forever or a silent failure.
 class AsyncValueView<T> extends StatelessWidget {
@@ -36,8 +38,15 @@ class AsyncValueView<T> extends StatelessWidget {
   }
 
   String _friendlyMessage(Object error) {
-    final message = error.toString();
-    return message.isEmpty ? 'Something went wrong.' : message;
+    // ApiException.toString() is already a clean, server-provided message.
+    // Anything else (a type-cast failure on a malformed response, a socket
+    // error, etc.) is a raw Dart/platform message that wouldn't mean
+    // anything to a user — show a generic fallback instead.
+    if (error is ApiException) {
+      final message = error.message;
+      return message.isEmpty ? 'Something went wrong.' : message;
+    }
+    return 'Something went wrong. Please try again.';
   }
 }
 

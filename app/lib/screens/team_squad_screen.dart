@@ -12,7 +12,11 @@ import '../widgets/async_value_view.dart';
 import 'team_managers_screen.dart';
 
 class TeamSquadScreen extends ConsumerStatefulWidget {
-  const TeamSquadScreen({super.key, required this.teamId, required this.tournamentSlug});
+  const TeamSquadScreen({
+    super.key,
+    required this.teamId,
+    required this.tournamentSlug,
+  });
 
   final String teamId;
   final String tournamentSlug;
@@ -24,7 +28,8 @@ class TeamSquadScreen extends ConsumerStatefulWidget {
 class _TeamSquadScreenState extends ConsumerState<TeamSquadScreen> {
   bool _manageMode = false;
 
-  SquadKey get _key => (teamId: widget.teamId, tournamentSlug: widget.tournamentSlug);
+  SquadKey get _key =>
+      (teamId: widget.teamId, tournamentSlug: widget.tournamentSlug);
 
   void _refresh() {
     ref.invalidate(squadProvider(_key));
@@ -32,14 +37,21 @@ class _TeamSquadScreenState extends ConsumerState<TeamSquadScreen> {
   }
 
   Future<void> _showAddPlayerFlow(BuildContext context) async {
-    final player = await Navigator.of(context).push<Player>(MaterialPageRoute(builder: (_) => const _PlayerSearchScreen()));
+    final player = await Navigator.of(context).push<Player>(
+      MaterialPageRoute(builder: (_) => const _PlayerSearchScreen()),
+    );
     if (player == null || !context.mounted) return;
 
-    final entry = await _showSquadEntryDialog(context, title: 'Add ${player.name}');
+    final entry = await _showSquadEntryDialog(
+      context,
+      title: 'Add ${player.name}',
+    );
     if (entry == null || !context.mounted) return;
 
     try {
-      await ref.read(apiClientProvider).addSquadPlayer(
+      await ref
+          .read(apiClientProvider)
+          .addSquadPlayer(
             widget.tournamentSlug,
             widget.teamId,
             playerId: player.id,
@@ -49,10 +61,14 @@ class _TeamSquadScreenState extends ConsumerState<TeamSquadScreen> {
           );
       _refresh();
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Player added')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Player added')));
     } on ApiException catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -67,7 +83,9 @@ class _TeamSquadScreenState extends ConsumerState<TeamSquadScreen> {
     if (entry == null || !mounted) return;
 
     try {
-      await ref.read(apiClientProvider).editSquadPlayer(
+      await ref
+          .read(apiClientProvider)
+          .editSquadPlayer(
             widget.tournamentSlug,
             widget.teamId,
             player.id,
@@ -76,9 +94,15 @@ class _TeamSquadScreenState extends ConsumerState<TeamSquadScreen> {
             isKeeper: entry.isKeeper,
           );
       _refresh();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Player updated')));
     } on ApiException catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -87,40 +111,66 @@ class _TeamSquadScreenState extends ConsumerState<TeamSquadScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('Remove ${player.name}?'),
-        content: const Text('They will need to be added again to rejoin this squad.'),
+        content: const Text(
+          'They will need to be added again to rejoin this squad.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Remove')),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Remove'),
+          ),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
 
     try {
-      await ref.read(apiClientProvider).removeSquadPlayer(widget.tournamentSlug, widget.teamId, player.id);
+      await ref
+          .read(apiClientProvider)
+          .removeSquadPlayer(widget.tournamentSlug, widget.teamId, player.id);
       _refresh();
     } on ApiException catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
   Future<void> _approvePlayer(BuildContext context, SquadPlayer player) async {
     try {
-      await ref.read(apiClientProvider).approveSquadPlayer(widget.tournamentSlug, widget.teamId, player.id, licenceVerified: true);
+      await ref
+          .read(apiClientProvider)
+          .approveSquadPlayer(
+            widget.tournamentSlug,
+            widget.teamId,
+            player.id,
+            licenceVerified: true,
+          );
       _refresh();
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${player.name} approved')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${player.name} approved')));
     } on ApiException catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isAuthed = ref.watch(authControllerProvider).status == AuthStatus.authenticated;
-    final squad = _manageMode ? ref.watch(managedSquadProvider(_key)) : ref.watch(squadProvider(_key));
+    final isAuthed =
+        ref.watch(authControllerProvider).status == AuthStatus.authenticated;
+    final squad = _manageMode
+        ? ref.watch(managedSquadProvider(_key))
+        : ref.watch(squadProvider(_key));
 
     return Scaffold(
       appBar: AppBar(
@@ -137,68 +187,138 @@ class _TeamSquadScreenState extends ConsumerState<TeamSquadScreen> {
               tooltip: 'Team managers',
               icon: const Icon(Icons.admin_panel_settings_outlined),
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => TeamManagersScreen(teamId: widget.teamId, tournamentSlug: widget.tournamentSlug)),
+                MaterialPageRoute(
+                  builder: (_) => TeamManagersScreen(
+                    teamId: widget.teamId,
+                    tournamentSlug: widget.tournamentSlug,
+                  ),
+                ),
               ),
             ),
         ],
       ),
-      body: AsyncValueView(
-        value: squad,
-        onRetry: _refresh,
-        data: (context, players) {
-          if (players.isEmpty) {
-            return EmptyState(message: _manageMode ? 'No players in the squad yet — add one below.' : 'Squad not announced yet.');
+      body: RefreshIndicator(
+        onRefresh: () async {
+          if (_manageMode) {
+            final _ = await ref.refresh(managedSquadProvider(_key).future);
+          } else {
+            final _ = await ref.refresh(squadProvider(_key).future);
           }
-          return ListView.separated(
-            itemCount: players.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final p = players[index];
-              final roles = [p.batting, p.bowling].whereType<String>().join(' · ');
-              return ListTile(
-                leading: CircleAvatar(child: Text(p.jerseyNumber?.toString() ?? '?')),
-                title: Text(p.name),
-                subtitle: Text(
-                  [if (roles.isNotEmpty) roles, if (_manageMode && !p.isApproved) 'Pending organiser approval'].join(roles.isNotEmpty ? ' · ' : ''),
-                  style: (_manageMode && !p.isApproved) ? TextStyle(color: Theme.of(context).colorScheme.error) : null,
-                ),
-                trailing: _manageMode
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (p.isCaptain) const Padding(padding: EdgeInsets.only(right: 4), child: Chip(label: Text('C'), visualDensity: VisualDensity.compact)),
-                          if (p.isKeeper) const Padding(padding: EdgeInsets.only(right: 4), child: Chip(label: Text('WK'), visualDensity: VisualDensity.compact)),
-                          PopupMenuButton<String>(
-                            onSelected: (action) {
-                              switch (action) {
-                                case 'edit':
-                                  _editPlayer(context, p);
-                                case 'approve':
-                                  _approvePlayer(context, p);
-                                case 'remove':
-                                  _removePlayer(context, p);
-                              }
-                            },
-                            itemBuilder: (context) => [
-                              const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                              if (!p.isApproved) const PopupMenuItem(value: 'approve', child: Text('Approve')),
-                              const PopupMenuItem(value: 'remove', child: Text('Remove', style: TextStyle(color: Colors.red))),
-                            ],
-                          ),
-                        ],
-                      )
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (p.isCaptain) const Padding(padding: EdgeInsets.only(right: 4), child: Chip(label: Text('C'), visualDensity: VisualDensity.compact)),
-                          if (p.isKeeper) const Chip(label: Text('WK'), visualDensity: VisualDensity.compact),
-                        ],
-                      ),
-                onTap: _manageMode ? null : () => context.push('/players/${p.id}'),
-              );
-            },
-          );
         },
+        child: AsyncValueView(
+          value: squad,
+          onRetry: _refresh,
+          data: (context, players) {
+            if (players.isEmpty) {
+              return EmptyState(
+                message: _manageMode
+                    ? 'No players in the squad yet — add one below.'
+                    : 'Squad not announced yet.',
+              );
+            }
+            return ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: players.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final p = players[index];
+                final roles = [
+                  p.batting,
+                  p.bowling,
+                ].whereType<String>().join(' · ');
+                return ListTile(
+                  leading: CircleAvatar(
+                    child: Text(p.jerseyNumber?.toString() ?? '?'),
+                  ),
+                  title: Text(p.name),
+                  subtitle: Text(
+                    [
+                      if (roles.isNotEmpty) roles,
+                      if (_manageMode && !p.isApproved)
+                        'Pending organiser approval',
+                    ].join(roles.isNotEmpty ? ' · ' : ''),
+                    style: (_manageMode && !p.isApproved)
+                        ? TextStyle(color: Theme.of(context).colorScheme.error)
+                        : null,
+                  ),
+                  trailing: _manageMode
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (p.isCaptain)
+                              const Padding(
+                                padding: EdgeInsets.only(right: 4),
+                                child: Chip(
+                                  label: Text('C'),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                            if (p.isKeeper)
+                              const Padding(
+                                padding: EdgeInsets.only(right: 4),
+                                child: Chip(
+                                  label: Text('WK'),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                            PopupMenuButton<String>(
+                              onSelected: (action) {
+                                switch (action) {
+                                  case 'edit':
+                                    _editPlayer(context, p);
+                                  case 'approve':
+                                    _approvePlayer(context, p);
+                                  case 'remove':
+                                    _removePlayer(context, p);
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('Edit'),
+                                ),
+                                if (!p.isApproved)
+                                  const PopupMenuItem(
+                                    value: 'approve',
+                                    child: Text('Approve'),
+                                  ),
+                                const PopupMenuItem(
+                                  value: 'remove',
+                                  child: Text(
+                                    'Remove',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (p.isCaptain)
+                              const Padding(
+                                padding: EdgeInsets.only(right: 4),
+                                child: Chip(
+                                  label: Text('C'),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                            if (p.isKeeper)
+                              const Chip(
+                                label: Text('WK'),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                          ],
+                        ),
+                  onTap: _manageMode
+                      ? null
+                      : () => context.push('/players/${p.id}'),
+                );
+              },
+            );
+          },
+        ),
       ),
       floatingActionButton: (isAuthed && _manageMode)
           ? FloatingActionButton.extended(
@@ -212,7 +332,11 @@ class _TeamSquadScreenState extends ConsumerState<TeamSquadScreen> {
 }
 
 class _SquadEntryResult {
-  const _SquadEntryResult({this.jerseyNumber, required this.isCaptain, required this.isKeeper});
+  const _SquadEntryResult({
+    this.jerseyNumber,
+    required this.isCaptain,
+    required this.isKeeper,
+  });
   final int? jerseyNumber;
   final bool isCaptain;
   final bool isKeeper;
@@ -225,7 +349,9 @@ Future<_SquadEntryResult?> _showSquadEntryDialog(
   bool isCaptain = false,
   bool isKeeper = false,
 }) {
-  final jerseyController = TextEditingController(text: jerseyNumber?.toString() ?? '');
+  final jerseyController = TextEditingController(
+    text: jerseyNumber?.toString() ?? '',
+  );
   var captain = isCaptain;
   var keeper = isKeeper;
 
@@ -239,7 +365,9 @@ Future<_SquadEntryResult?> _showSquadEntryDialog(
           children: [
             TextField(
               controller: jerseyController,
-              decoration: const InputDecoration(labelText: 'Jersey number (optional)'),
+              decoration: const InputDecoration(
+                labelText: 'Jersey number (optional)',
+              ),
               keyboardType: TextInputType.number,
               autofocus: true,
             ),
@@ -258,10 +386,17 @@ Future<_SquadEntryResult?> _showSquadEntryDialog(
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(
-              _SquadEntryResult(jerseyNumber: int.tryParse(jerseyController.text.trim()), isCaptain: captain, isKeeper: keeper),
+              _SquadEntryResult(
+                jerseyNumber: int.tryParse(jerseyController.text.trim()),
+                isCaptain: captain,
+                isKeeper: keeper,
+              ),
             ),
             child: const Text('Save'),
           ),
@@ -279,7 +414,8 @@ class _PlayerSearchScreen extends ConsumerStatefulWidget {
   const _PlayerSearchScreen();
 
   @override
-  ConsumerState<_PlayerSearchScreen> createState() => _PlayerSearchScreenState();
+  ConsumerState<_PlayerSearchScreen> createState() =>
+      _PlayerSearchScreenState();
 }
 
 class _PlayerSearchScreenState extends ConsumerState<_PlayerSearchScreen> {
@@ -312,7 +448,9 @@ class _PlayerSearchScreenState extends ConsumerState<_PlayerSearchScreen> {
         _error = null;
       });
       try {
-        final results = await ref.read(apiClientProvider).searchPlayers(trimmed);
+        final results = await ref
+            .read(apiClientProvider)
+            .searchPlayers(trimmed);
         if (!mounted) return;
         setState(() {
           _results = results;
@@ -335,29 +473,39 @@ class _PlayerSearchScreenState extends ConsumerState<_PlayerSearchScreen> {
         title: TextField(
           controller: _controller,
           autofocus: true,
-          decoration: const InputDecoration(hintText: 'Search players by name', border: InputBorder.none),
+          decoration: const InputDecoration(
+            hintText: 'Search players by name',
+            border: InputBorder.none,
+          ),
           onChanged: _onChanged,
         ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!))
-              : _results.isEmpty
-                  ? const EmptyState(message: 'Type at least 2 characters to search.')
-                  : ListView.separated(
-                      itemCount: _results.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final p = _results[index];
-                        final roles = [p.batting, p.bowling].whereType<String>().join(' · ');
-                        return ListTile(
-                          title: Text(p.name),
-                          subtitle: roles.isEmpty ? null : Text(roles),
-                          onTap: () => Navigator.of(context).pop(p),
-                        );
-                      },
-                    ),
+          ? Center(child: Text(_error!))
+          : _results.isEmpty
+          ? EmptyState(
+              message: _controller.text.trim().length >= 2
+                  ? 'No players found matching that name.'
+                  : 'Type at least 2 characters to search.',
+            )
+          : ListView.separated(
+              itemCount: _results.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final p = _results[index];
+                final roles = [
+                  p.batting,
+                  p.bowling,
+                ].whereType<String>().join(' · ');
+                return ListTile(
+                  title: Text(p.name),
+                  subtitle: roles.isEmpty ? null : Text(roles),
+                  onTap: () => Navigator.of(context).pop(p),
+                );
+              },
+            ),
     );
   }
 }

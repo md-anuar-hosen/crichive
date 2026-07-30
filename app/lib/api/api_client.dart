@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../models/bracket.dart';
+import '../models/data_request.dart';
 import '../models/delivery.dart';
 import '../models/delivery_result.dart';
 import '../models/fixture.dart';
@@ -16,13 +17,17 @@ import '../models/tournament_awards.dart';
 import '../models/user.dart';
 import 'api_exception.dart';
 
-const _defaultBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:3000');
+const _defaultBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://localhost:3000',
+);
 
 /// Wraps every backend route the app needs. [setTokenProvider] wires in the
 /// current JWT (if any) via an interceptor; scoring routes 403 server-side
 /// for users without the right tournament role.
 class ApiClient {
-  ApiClient({String? baseUrl}) : _dio = Dio(BaseOptions(baseUrl: baseUrl ?? _defaultBaseUrl)) {
+  ApiClient({String? baseUrl})
+    : _dio = Dio(BaseOptions(baseUrl: baseUrl ?? _defaultBaseUrl)) {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
@@ -43,7 +48,8 @@ class ApiClient {
   String? Function()? _tokenProvider;
   void Function()? onUnauthorized;
 
-  void setTokenProvider(String? Function()? provider) => _tokenProvider = provider;
+  void setTokenProvider(String? Function()? provider) =>
+      _tokenProvider = provider;
 
   DioException _toApiError(DioException error) {
     final response = error.response;
@@ -59,33 +65,58 @@ class ApiClient {
       if (fields is List) {
         fieldErrors = fields
             .cast<Map<String, dynamic>>()
-            .map((f) => {'field': f['field'] as String, 'message': f['message'] as String})
+            .map(
+              (f) => {
+                'field': f['field'] as String,
+                'message': f['message'] as String,
+              },
+            )
             .toList();
       }
     }
-    return error.copyWith(error: ApiException(response?.statusCode, message, fieldErrors: fieldErrors));
+    return error.copyWith(
+      error: ApiException(
+        response?.statusCode,
+        message,
+        fieldErrors: fieldErrors,
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------
   // Auth routes
   // ---------------------------------------------------------------------
 
-  Future<User> register({required String email, required String password, required String displayName}) async {
+  Future<User> register({
+    required String email,
+    required String password,
+    required String displayName,
+  }) async {
     final res = await _dio.post(
       '/auth/register',
       data: {'email': email, 'password': password, 'display_name': displayName},
     );
-    return User.fromJson((res.data as Map<String, dynamic>)['user'] as Map<String, dynamic>);
+    return User.fromJson(
+      (res.data as Map<String, dynamic>)['user'] as Map<String, dynamic>,
+    );
   }
 
-  Future<String> login({required String email, required String password}) async {
-    final res = await _dio.post('/auth/login', data: {'email': email, 'password': password});
+  Future<String> login({
+    required String email,
+    required String password,
+  }) async {
+    final res = await _dio.post(
+      '/auth/login',
+      data: {'email': email, 'password': password},
+    );
     return (res.data as Map<String, dynamic>)['token'] as String;
   }
 
   Future<User> me() async {
     final res = await _dio.get('/auth/me');
-    return User.fromJson((res.data as Map<String, dynamic>)['user'] as Map<String, dynamic>);
+    return User.fromJson(
+      (res.data as Map<String, dynamic>)['user'] as Map<String, dynamic>,
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -93,8 +124,15 @@ class ApiClient {
   // here means this user lacks the tournament role, not a client bug)
   // ---------------------------------------------------------------------
 
-  Future<void> recordToss(String matchId, {required String winnerTeamId, required String decision}) async {
-    await _dio.post('/matches/$matchId/toss', data: {'winner_team_id': winnerTeamId, 'decision': decision});
+  Future<void> recordToss(
+    String matchId, {
+    required String winnerTeamId,
+    required String decision,
+  }) async {
+    await _dio.post(
+      '/matches/$matchId/toss',
+      data: {'winner_team_id': winnerTeamId, 'decision': decision},
+    );
   }
 
   Future<void> setPlayingXi(
@@ -156,8 +194,15 @@ class ApiClient {
     return DeliveryResult.fromJson(res.data as Map<String, dynamic>);
   }
 
-  Future<void> voidDelivery(String matchId, String deliveryId, {required String reason}) async {
-    await _dio.post('/matches/$matchId/deliveries/$deliveryId/void', data: {'reason': reason});
+  Future<void> voidDelivery(
+    String matchId,
+    String deliveryId, {
+    required String reason,
+  }) async {
+    await _dio.post(
+      '/matches/$matchId/deliveries/$deliveryId/void',
+      data: {'reason': reason},
+    );
   }
 
   Future<void> closeInnings(String matchId, int inningsNumber) async {
@@ -166,6 +211,26 @@ class ApiClient {
 
   Future<void> abandonMatch(String matchId, {required String reason}) async {
     await _dio.post('/matches/$matchId/abandon', data: {'reason': reason});
+  }
+
+  /// Only valid before the toss — for a match that never started (ground
+  /// unavailable, a team withdrew). Carries no result and never counts
+  /// toward standings.
+  Future<void> cancelMatch(String matchId, {required String reason}) async {
+    await _dio.post('/matches/$matchId/cancel', data: {'reason': reason});
+  }
+
+  /// A team fails to show up / concedes — unlike abandon, this is a
+  /// decisive result: winnerTeamId gets the win and its points.
+  Future<void> forfeitMatch(
+    String matchId, {
+    required String winnerTeamId,
+    String? reason,
+  }) async {
+    await _dio.post(
+      '/matches/$matchId/forfeit',
+      data: {'winner_team_id': winnerTeamId, 'reason': ?reason},
+    );
   }
 
   /// Records a rain/weather stoppage under CricHive's own rain-rule method
@@ -178,18 +243,33 @@ class ApiClient {
   }) async {
     await _dio.post(
       '/matches/$matchId/innings/$inningsNumber/interruption',
-      data: {'overs_remaining_after': oversRemainingAfter, if (reason != null && reason.isNotEmpty) 'reason': reason},
+      data: {
+        'overs_remaining_after': oversRemainingAfter,
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      },
     );
   }
 
-  Future<TournamentRules> updateTournamentRules(String slug, Map<String, dynamic> fields) async {
+  Future<TournamentRules> updateTournamentRules(
+    String slug,
+    Map<String, dynamic> fields,
+  ) async {
     final res = await _dio.patch('/tournaments/$slug/rules', data: fields);
-    return TournamentRules.fromJson((res.data as Map<String, dynamic>)['rules'] as Map<String, dynamic>);
+    return TournamentRules.fromJson(
+      (res.data as Map<String, dynamic>)['rules'] as Map<String, dynamic>,
+    );
   }
 
   /// Organiser-only. Pass an empty string for [logoUrl] to clear it.
-  Future<void> updateTournamentBranding(String slug, {String? logoUrl, String? organizerOrg}) async {
-    await _dio.patch('/tournaments/$slug', data: {'logo_url': ?logoUrl, 'organizer_org': ?organizerOrg});
+  Future<void> updateTournamentBranding(
+    String slug, {
+    String? logoUrl,
+    String? organizerOrg,
+  }) async {
+    await _dio.patch(
+      '/tournaments/$slug',
+      data: {'logo_url': ?logoUrl, 'organizer_org': ?organizerOrg},
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -210,6 +290,28 @@ class ApiClient {
         if (playerId != null && playerId.isNotEmpty) 'player_id': playerId,
         if (details != null && details.isNotEmpty) 'details': details,
       },
+    );
+  }
+
+  /// Platform-admin only.
+  Future<List<DataRequest>> getDataRequests({String? status}) async {
+    final res = await _dio.get(
+      '/data-requests',
+      queryParameters: {'status': ?status},
+    );
+    final list = (res.data as Map<String, dynamic>)['data_requests'] as List;
+    return list.cast<Map<String, dynamic>>().map(DataRequest.fromJson).toList();
+  }
+
+  /// Platform-admin only.
+  Future<void> resolveDataRequest(
+    String id, {
+    required String status,
+    String? resolutionNote,
+  }) async {
+    await _dio.patch(
+      '/data-requests/$id',
+      data: {'status': status, 'resolution_note': ?resolutionNote},
     );
   }
 
@@ -236,7 +338,10 @@ class ApiClient {
         'ball': ?ball,
       },
     );
-    return Paginated.fromJson(res.data as Map<String, dynamic>, Tournament.fromJson);
+    return Paginated.fromJson(
+      res.data as Map<String, dynamic>,
+      Tournament.fromJson,
+    );
   }
 
   Future<Tournament> getTournament(String slug) async {
@@ -254,6 +359,7 @@ class ApiClient {
     required int oversPerInnings,
     required int maxOversPerBowler,
     String? organizerOrg,
+    String? ball,
   }) async {
     final res = await _dio.post(
       '/tournaments',
@@ -264,9 +370,12 @@ class ApiClient {
         'overs_per_innings': oversPerInnings,
         'max_overs_per_bowler': maxOversPerBowler,
         'organizer_org': ?organizerOrg,
+        'ball': ?ball,
       },
     );
-    return Tournament.fromJson((res.data as Map<String, dynamic>)['tournament'] as Map<String, dynamic>);
+    return Tournament.fromJson(
+      (res.data as Map<String, dynamic>)['tournament'] as Map<String, dynamic>,
+    );
   }
 
   Future<PlatformSettings> getPlatformSettings() async {
@@ -274,23 +383,38 @@ class ApiClient {
     return PlatformSettings.fromJson(res.data as Map<String, dynamic>);
   }
 
-  Future<PlatformSettings> updatePlatformSettings({required String organizerSignupMode}) async {
-    final res = await _dio.patch('/platform/settings', data: {'organizer_signup_mode': organizerSignupMode});
+  Future<PlatformSettings> updatePlatformSettings({
+    required String organizerSignupMode,
+  }) async {
+    final res = await _dio.patch(
+      '/platform/settings',
+      data: {'organizer_signup_mode': organizerSignupMode},
+    );
     return PlatformSettings.fromJson(res.data as Map<String, dynamic>);
   }
 
   Future<List<PendingTournament>> getPendingTournaments() async {
     final res = await _dio.get('/tournaments/pending');
     final list = (res.data as Map<String, dynamic>)['tournaments'] as List;
-    return list.cast<Map<String, dynamic>>().map(PendingTournament.fromJson).toList();
+    return list
+        .cast<Map<String, dynamic>>()
+        .map(PendingTournament.fromJson)
+        .toList();
   }
 
   Future<void> approveTournament(String slug) async {
     await _dio.post('/tournaments/$slug/approve');
   }
 
-  Future<Paginated<Team>> getTeams(String slug, {int page = 1, int limit = 50}) async {
-    final res = await _dio.get('/tournaments/$slug/teams', queryParameters: {'page': page, 'limit': limit});
+  Future<Paginated<Team>> getTeams(
+    String slug, {
+    int page = 1,
+    int limit = 50,
+  }) async {
+    final res = await _dio.get(
+      '/tournaments/$slug/teams',
+      queryParameters: {'page': page, 'limit': limit},
+    );
     return Paginated.fromJson(res.data as Map<String, dynamic>, Team.fromJson);
   }
 
@@ -300,8 +424,18 @@ class ApiClient {
   }
 
   /// [teamIdsBySeed] is seed order — first entry is the top seed. Organiser-only.
-  Future<void> createKnockoutBracket(String slug, {String? name, required List<String> teamIdsBySeed}) async {
-    await _dio.post('/tournaments/$slug/knockout', data: {if (name != null && name.isNotEmpty) 'name': name, 'team_ids': teamIdsBySeed});
+  Future<void> createKnockoutBracket(
+    String slug, {
+    String? name,
+    required List<String> teamIdsBySeed,
+  }) async {
+    await _dio.post(
+      '/tournaments/$slug/knockout',
+      data: {
+        if (name != null && name.isNotEmpty) 'name': name,
+        'team_ids': teamIdsBySeed,
+      },
+    );
   }
 
   Future<Paginated<Fixture>> getFixtures(
@@ -324,13 +458,19 @@ class ApiClient {
         'status': ?status,
       },
     );
-    return Paginated.fromJson(res.data as Map<String, dynamic>, Fixture.fromJson);
+    return Paginated.fromJson(
+      res.data as Map<String, dynamic>,
+      Fixture.fromJson,
+    );
   }
 
   Future<List<StandingGroup>> getStandings(String slug) async {
     final res = await _dio.get('/tournaments/$slug/standings');
     final groups = (res.data as Map<String, dynamic>)['groups'] as List;
-    return groups.cast<Map<String, dynamic>>().map(StandingGroup.fromJson).toList();
+    return groups
+        .cast<Map<String, dynamic>>()
+        .map(StandingGroup.fromJson)
+        .toList();
   }
 
   Future<TournamentAwards> getTournamentAwards(String slug) async {
@@ -338,24 +478,33 @@ class ApiClient {
     return TournamentAwards.fromJson(res.data as Map<String, dynamic>);
   }
 
-  Future<Team> getTeam(String id) async {
-    final res = await _dio.get('/teams/$id');
-    return Team.fromJson(res.data as Map<String, dynamic>);
-  }
-
-  Future<List<SquadPlayer>> getSquad(String teamId, String tournamentSlug) async {
+  Future<List<SquadPlayer>> getSquad(
+    String teamId,
+    String tournamentSlug,
+  ) async {
     final res = await _dio.get('/teams/$teamId/squad/$tournamentSlug');
     final squad = (res.data as Map<String, dynamic>)['squad'] as List;
-    return squad.cast<Map<String, dynamic>>().map(SquadPlayer.fromJson).toList();
+    return squad
+        .cast<Map<String, dynamic>>()
+        .map(SquadPlayer.fromJson)
+        .toList();
   }
 
   /// Same shape as [getSquad] but includes pending (not-yet-approved)
   /// entries too — only visible to the tournament's organiser or that
   /// team's own manager.
-  Future<List<SquadPlayer>> getManagedSquad(String tournamentSlug, String teamId) async {
-    final res = await _dio.get('/tournaments/$tournamentSlug/teams/$teamId/squad/manage');
+  Future<List<SquadPlayer>> getManagedSquad(
+    String tournamentSlug,
+    String teamId,
+  ) async {
+    final res = await _dio.get(
+      '/tournaments/$tournamentSlug/teams/$teamId/squad/manage',
+    );
     final squad = (res.data as Map<String, dynamic>)['squad'] as List;
-    return squad.cast<Map<String, dynamic>>().map(SquadPlayer.fromJson).toList();
+    return squad
+        .cast<Map<String, dynamic>>()
+        .map(SquadPlayer.fromJson)
+        .toList();
   }
 
   /// Organiser adding a player is approved immediately; a team manager's
@@ -399,36 +548,76 @@ class ApiClient {
     );
   }
 
-  Future<void> removeSquadPlayer(String tournamentSlug, String teamId, String playerId) async {
-    await _dio.delete('/tournaments/$tournamentSlug/teams/$teamId/squad/$playerId');
+  Future<void> removeSquadPlayer(
+    String tournamentSlug,
+    String teamId,
+    String playerId,
+  ) async {
+    await _dio.delete(
+      '/tournaments/$tournamentSlug/teams/$teamId/squad/$playerId',
+    );
   }
 
   /// Organiser-only: confirms the squad placement and records the manual
   /// Suomisport licence check in the same step.
-  Future<void> approveSquadPlayer(String tournamentSlug, String teamId, String playerId, {required bool licenceVerified}) async {
-    await _dio.post('/tournaments/$tournamentSlug/teams/$teamId/squad/$playerId/approve', data: {'licence_verified': licenceVerified});
+  Future<void> approveSquadPlayer(
+    String tournamentSlug,
+    String teamId,
+    String playerId, {
+    required bool licenceVerified,
+  }) async {
+    await _dio.post(
+      '/tournaments/$tournamentSlug/teams/$teamId/squad/$playerId/approve',
+      data: {'licence_verified': licenceVerified},
+    );
   }
 
-  Future<List<TeamManager>> getTeamManagers(String tournamentSlug, String teamId) async {
-    final res = await _dio.get('/tournaments/$tournamentSlug/teams/$teamId/managers');
+  Future<List<TeamManager>> getTeamManagers(
+    String tournamentSlug,
+    String teamId,
+  ) async {
+    final res = await _dio.get(
+      '/tournaments/$tournamentSlug/teams/$teamId/managers',
+    );
     final managers = (res.data as Map<String, dynamic>)['managers'] as List;
-    return managers.cast<Map<String, dynamic>>().map(TeamManager.fromJson).toList();
+    return managers
+        .cast<Map<String, dynamic>>()
+        .map(TeamManager.fromJson)
+        .toList();
   }
 
   /// The person must already have a CricHive account. Returns the matched
   /// account so the caller can confirm it's the right person before it's
   /// too late to catch a typo'd email.
-  Future<TeamManager> grantTeamManager(String tournamentSlug, String teamId, {required String email}) async {
-    final res = await _dio.post('/tournaments/$tournamentSlug/teams/$teamId/managers', data: {'email': email});
-    return TeamManager.fromJson((res.data as Map<String, dynamic>)['membership'] as Map<String, dynamic>);
+  Future<TeamManager> grantTeamManager(
+    String tournamentSlug,
+    String teamId, {
+    required String email,
+  }) async {
+    final res = await _dio.post(
+      '/tournaments/$tournamentSlug/teams/$teamId/managers',
+      data: {'email': email},
+    );
+    return TeamManager.fromJson(
+      (res.data as Map<String, dynamic>)['membership'] as Map<String, dynamic>,
+    );
   }
 
-  Future<void> revokeTeamManager(String tournamentSlug, String teamId, String membershipId) async {
-    await _dio.delete('/tournaments/$tournamentSlug/teams/$teamId/managers/$membershipId');
+  Future<void> revokeTeamManager(
+    String tournamentSlug,
+    String teamId,
+    String membershipId,
+  ) async {
+    await _dio.delete(
+      '/tournaments/$tournamentSlug/teams/$teamId/managers/$membershipId',
+    );
   }
 
   Future<List<Player>> searchPlayers(String query) async {
-    final res = await _dio.get('/players/search', queryParameters: {'q': query});
+    final res = await _dio.get(
+      '/players/search',
+      queryParameters: {'q': query},
+    );
     final data = (res.data as Map<String, dynamic>)['data'] as List;
     return data.cast<Map<String, dynamic>>().map(Player.fromJson).toList();
   }
@@ -446,7 +635,10 @@ class ApiClient {
   /// Full ball-by-ball feed for one innings, transparently walking every
   /// page (the server caps a single page at 100) so chart code always gets
   /// the complete innings regardless of format length.
-  Future<List<Delivery>> getDeliveries(String matchId, int inningsNumber) async {
+  Future<List<Delivery>> getDeliveries(
+    String matchId,
+    int inningsNumber,
+  ) async {
     final all = <Delivery>[];
     var page = 1;
     while (true) {
@@ -455,7 +647,9 @@ class ApiClient {
         queryParameters: {'page': page, 'limit': 100},
       );
       final body = res.data as Map<String, dynamic>;
-      final rows = (body['data'] as List).cast<Map<String, dynamic>>().map(Delivery.fromJson);
+      final rows = (body['data'] as List).cast<Map<String, dynamic>>().map(
+        Delivery.fromJson,
+      );
       all.addAll(rows);
       final pageInfo = body['pagination'] as Map<String, dynamic>;
       if (page >= (pageInfo['total_pages'] as int)) break;
@@ -467,6 +661,9 @@ class ApiClient {
   Future<List<LiveMatch>> getLiveMatches() async {
     final res = await _dio.get('/live');
     final matches = (res.data as Map<String, dynamic>)['matches'] as List;
-    return matches.cast<Map<String, dynamic>>().map(LiveMatch.fromJson).toList();
+    return matches
+        .cast<Map<String, dynamic>>()
+        .map(LiveMatch.fromJson)
+        .toList();
   }
 }

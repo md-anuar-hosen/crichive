@@ -20,6 +20,7 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
   final _oversPerInnings = TextEditingController(text: '20');
   final _maxOversPerBowler = TextEditingController(text: '4');
   final _organizerOrg = TextEditingController();
+  String _ball = 'leather';
 
   var _submitting = false;
   String? _error;
@@ -56,6 +57,7 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
             oversPerInnings: int.parse(_oversPerInnings.text.trim()),
             maxOversPerBowler: int.parse(_maxOversPerBowler.text.trim()),
             organizerOrg: _organizerOrg.text.trim().isEmpty ? null : _organizerOrg.text.trim(),
+            ball: _ball,
           );
       ref.invalidate(tournamentsProvider);
       if (!mounted) return;
@@ -162,6 +164,18 @@ class _CreateTournamentScreenState extends ConsumerState<CreateTournamentScreen>
               TextFormField(
                 controller: _organizerOrg,
                 decoration: const InputDecoration(labelText: 'Organising club/association (optional)'),
+              ),
+              const SizedBox(height: 16),
+              Text('Ball', style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 8),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'leather', label: Text('Leather')),
+                  ButtonSegment(value: 'tennis', label: Text('Tennis')),
+                  ButtonSegment(value: 'tape', label: Text('Tape')),
+                ],
+                selected: {_ball},
+                onSelectionChanged: (selection) => setState(() => _ball = selection.first),
               ),
               const SizedBox(height: 20),
               FilledButton(
