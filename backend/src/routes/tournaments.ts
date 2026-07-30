@@ -84,6 +84,7 @@ const createTournamentSchema = z.object({
   max_overs_per_bowler: z.number().int().min(1),
   organizer_org: z.string().trim().optional(),
   country_code: z.string().length(2).optional(),
+  ball: z.enum(['leather', 'tennis', 'tape']).optional(),
 });
 
 router.post('/tournaments', requireAuth, async (req, res) => {
@@ -112,6 +113,7 @@ router.post('/tournaments', requireAuth, async (req, res) => {
           season_year: data.season_year,
           organizer_org: data.organizer_org ?? null,
           country_code: data.country_code ?? 'FI',
+          ball: data.ball ?? 'leather',
           created_by: req.user!.sub,
           is_public: isOpen,
           approved_at: isOpen ? new Date() : null,

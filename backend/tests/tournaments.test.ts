@@ -80,6 +80,31 @@ describe('Tournament creation + organiser-approval mode', () => {
     20000,
   );
 
+  it('defaults to a leather ball, but a tennis/tape tournament can be created explicitly', async () => {
+    const leatherSlug = `leather-${randomUUID()}`;
+    const tennisSlug = `tennis-${randomUUID()}`;
+
+    const leather = await request(app)
+      .post('/tournaments')
+      .set('Authorization', `Bearer ${creatorAToken}`)
+      .send({ name: 'Leather Default', slug: leatherSlug, season_year: 2027, overs_per_innings: 20, max_overs_per_bowler: 4 });
+    expect(leather.status).toBe(201);
+    createdTournamentIds.push(leather.body.tournament.id);
+
+    const tennis = await request(app)
+      .post('/tournaments')
+      .set('Authorization', `Bearer ${creatorAToken}`)
+      .send({ name: 'Tennis Ball Cup', slug: tennisSlug, season_year: 2027, overs_per_innings: 8, max_overs_per_bowler: 2, ball: 'tennis' });
+    expect(tennis.status).toBe(201);
+    createdTournamentIds.push(tennis.body.tournament.id);
+
+    const leatherView = await request(app).get(`/tournaments/${leatherSlug}`);
+    expect(leatherView.body.ball).toBe('leather');
+
+    const tennisView = await request(app).get(`/tournaments/${tennisSlug}`);
+    expect(tennisView.body.ball).toBe('tennis');
+  });
+
   it('branding: the organizer can set a logo and org, a non-organizer cannot, and an invalid URL is rejected', async () => {
     const asOwner = await request(app)
       .patch(`/tournaments/${openSlug}`)
