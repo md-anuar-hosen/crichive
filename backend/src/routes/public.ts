@@ -5,8 +5,11 @@ import { selectBestPerformer } from '../domain/scoring';
 import { parsePagination, paginated } from '../lib/pagination';
 import { serializePlayer, serializeTeam, serializeTournament } from '../serializers/public';
 import { getMatchScorecard } from '../services/matchScorecard';
+import { isUuid } from '../utils/validation';
 
 const router = Router();
+
+const MATCH_STATUSES = ['scheduled', 'toss_done', 'live', 'innings_break', 'super_over', 'completed', 'abandoned', 'cancelled', 'forfeited'] as const;
 
 router.use((_req, res, next) => {
   res.set('Cache-Control', 'public, max-age=30');
@@ -136,16 +139,28 @@ router.get('/tournaments/:slug/fixtures', async (req, res) => {
   let countQuery = db.selectFrom('matches').where('matches.tournament_id', '=', tournament.id);
 
   if (typeof group === 'string') {
+    if (!isUuid(group)) {
+      res.status(400).json({ error: 'Invalid group id' });
+      return;
+    }
     query = query.where('matches.group_id', '=', group);
     countQuery = countQuery.where('matches.group_id', '=', group);
   }
   if (typeof team === 'string') {
+    if (!isUuid(team)) {
+      res.status(400).json({ error: 'Invalid team id' });
+      return;
+    }
     query = query.where((eb) => eb.or([eb('matches.team_a_id', '=', team), eb('matches.team_b_id', '=', team)]));
     countQuery = countQuery.where((eb) => eb.or([eb('matches.team_a_id', '=', team), eb('matches.team_b_id', '=', team)]));
   }
   if (typeof status === 'string') {
-    query = query.where('matches.status', '=', status as never);
-    countQuery = countQuery.where('matches.status', '=', status as never);
+    if (!MATCH_STATUSES.includes(status as (typeof MATCH_STATUSES)[number])) {
+      res.status(400).json({ error: 'Invalid status' });
+      return;
+    }
+    query = query.where('matches.status', '=', status as (typeof MATCH_STATUSES)[number]);
+    countQuery = countQuery.where('matches.status', '=', status as (typeof MATCH_STATUSES)[number]);
   }
   if (typeof date === 'string') {
     query = query.where((eb) =>

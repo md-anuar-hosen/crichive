@@ -3,12 +3,15 @@ import { z } from 'zod';
 import { db } from '../db/index';
 import { requireAuth } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/platformAdmin';
+import { isUuid } from '../utils/validation';
 
 const router = Router();
 
 function zodFieldErrors(error: z.ZodError): { field: string; message: string }[] {
   return error.issues.map((issue) => ({ field: issue.path.join('.') || '(root)', message: issue.message }));
 }
+
+const DATA_REQUEST_STATUSES = ['open', 'in_progress', 'resolved', 'rejected'] as const;
 
 const createSchema = z.object({
   player_id: z.string().uuid().optional(),
@@ -42,9 +45,13 @@ router.post('/data-requests', async (req, res) => {
 // Platform-admin only from here — this queue spans every tournament, and touches raw contact emails.
 router.get('/data-requests', requireAuth, requirePlatformAdmin, async (req, res) => {
   const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+  if (status && !DATA_REQUEST_STATUSES.includes(status as (typeof DATA_REQUEST_STATUSES)[number])) {
+    res.status(400).json({ error: 'Invalid status' });
+    return;
+  }
 
   let query = db.selectFrom('data_requests').selectAll().orderBy('created_at', 'desc');
-  if (status) query = query.where('status', '=', status as never);
+  if (status) query = query.where('status', '=', status as (typeof DATA_REQUEST_STATUSES)[number]);
 
   const rows = await query.execute();
   res.json({ data_requests: rows });
@@ -56,6 +63,10 @@ const resolveSchema = z.object({
 });
 
 router.patch('/data-requests/:id', requireAuth, requirePlatformAdmin, async (req, res) => {
+  if (!isUuid(req.params.id as string)) {
+    res.status(404).json({ error: 'Data request not found' });
+    return;
+  }
   const parsed = resolveSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Validation failed', fields: zodFieldErrors(parsed.error) });

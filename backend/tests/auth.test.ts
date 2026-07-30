@@ -26,7 +26,7 @@ describe('POST /auth/register', () => {
 
     const second = await request(app).post('/auth/register').send(body);
     expect(second.status).toBe(409);
-  });
+  }, 15000); // two live Neon round trips against the default 5s vitest timeout is too tight under real network variance
 });
 
 describe('requireAuth', () => {

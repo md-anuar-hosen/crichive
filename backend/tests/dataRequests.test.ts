@@ -44,6 +44,9 @@ describe('data requests (GDPR, Phase 8)', () => {
     const allowed = await request(app).get('/data-requests').set('Authorization', `Bearer ${adminToken}`);
     expect(allowed.status).toBe(200);
     expect(Array.isArray(allowed.body.data_requests)).toBe(true);
+
+    const invalidStatus = await request(app).get('/data-requests').query({ status: 'not-a-real-status' }).set('Authorization', `Bearer ${adminToken}`);
+    expect(invalidStatus.status).toBe(400);
   });
 
   it('lets a platform admin resolve a request', async () => {

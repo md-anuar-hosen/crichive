@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { db } from '../db/index';
 import type { TournamentRole } from '../db/types';
+import { isUuid } from '../utils/validation';
 
 /**
  * Like requireTournamentRole, but for routes keyed by :id = match id rather
@@ -11,6 +12,10 @@ export function requireMatchRole(...allowedRoles: TournamentRole[]) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     if (!req.user) {
       res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    if (!isUuid(req.params.id as string)) {
+      res.status(404).json({ error: 'Match not found' });
       return;
     }
 

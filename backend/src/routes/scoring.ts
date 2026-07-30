@@ -232,15 +232,15 @@ const deliverySchema = z
     non_striker_id: z.string().uuid(),
     bowler_id: z.string().uuid(),
     runs_off_bat: z.number().int().min(0).max(8).default(0),
-    extra_wides: z.number().int().min(0).default(0),
-    extra_noballs: z.number().int().min(0).default(0),
-    extra_byes: z.number().int().min(0).default(0),
-    extra_legbyes: z.number().int().min(0).default(0),
-    extra_penalty: z.number().int().min(0).default(0),
+    extra_wides: z.number().int().min(0).max(20).default(0),
+    extra_noballs: z.number().int().min(0).max(20).default(0),
+    extra_byes: z.number().int().min(0).max(20).default(0),
+    extra_legbyes: z.number().int().min(0).max(20).default(0),
+    extra_penalty: z.number().int().min(0).max(20).default(0),
     wicket_kind: z.enum(DISMISSAL_KINDS).optional(),
     player_out_id: z.string().uuid().optional(),
     fielder_id: z.string().uuid().optional(),
-    commentary: z.string().optional(),
+    commentary: z.string().trim().max(500).optional(),
     wagon_angle_deg: z.number().int().optional(),
     wagon_distance: z.number().int().optional(),
   })
@@ -251,6 +251,10 @@ const deliverySchema = z
   .refine((body) => body.striker_id !== body.non_striker_id, {
     message: 'striker_id and non_striker_id must differ',
     path: ['non_striker_id'],
+  })
+  .refine((body) => !(body.extra_wides > 0 && body.extra_noballs > 0), {
+    message: 'A delivery cannot be both a wide and a no-ball',
+    path: ['extra_noballs'],
   });
 
 router.post('/matches/:id/deliveries', requireAuth, requireMatchRole('organizer', 'scorer'), async (req, res) => {
@@ -439,7 +443,7 @@ function isUniqueViolation(err: unknown): boolean {
 // POST /matches/:id/deliveries/:deliveryId/void
 // ---------------------------------------------------------------------------
 
-const voidSchema = z.object({ reason: z.string().trim().min(1) });
+const voidSchema = z.object({ reason: z.string().trim().min(1).max(500) });
 
 router.post('/matches/:id/deliveries/:deliveryId/void', requireAuth, requireMatchRole('organizer', 'scorer'), async (req, res) => {
   const match = await loadMatch(param(req.params.id));
@@ -625,22 +629,28 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
   const firstOfPairNumber = inningsNumber === 4 ? 3 : 1;
   const isSuperOverDecider = inningsNumber === 4;
 
-  const [firstTotals, secondTotals] = await Promise.all([
+  // innings_totals only gets a row once the innings' first delivery is
+  // scored (applyScorecardToDerivedTables) — an innings closed with zero
+  // balls bowled (e.g. rained out before it started) has none yet, and
+  // that's a legitimate 0/0, not a missing-row error.
+  const [firstRow, secondRow] = await Promise.all([
     db
       .selectFrom('innings')
-      .innerJoin('innings_totals', 'innings_totals.innings_id', 'innings.id')
+      .leftJoin('innings_totals', 'innings_totals.innings_id', 'innings.id')
       .select(['innings_totals.runs', 'innings_totals.wickets'])
       .where('innings.match_id', '=', match.id)
       .where('innings.innings_number', '=', firstOfPairNumber)
-      .executeTakeFirstOrThrow(),
+      .executeTakeFirst(),
     db
       .selectFrom('innings')
-      .innerJoin('innings_totals', 'innings_totals.innings_id', 'innings.id')
+      .leftJoin('innings_totals', 'innings_totals.innings_id', 'innings.id')
       .select(['innings_totals.runs', 'innings_totals.wickets'])
       .where('innings.match_id', '=', match.id)
       .where('innings.innings_number', '=', inningsNumber)
-      .executeTakeFirstOrThrow(),
+      .executeTakeFirst(),
   ]);
+  const firstTotals = { runs: firstRow?.runs ?? 0, wickets: firstRow?.wickets ?? 0 };
+  const secondTotals = { runs: secondRow?.runs ?? 0, wickets: secondRow?.wickets ?? 0 };
 
   const outcome = resolveMatchResult(firstTotals, secondTotals, rules);
 
@@ -786,7 +796,7 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
 // POST /matches/:id/abandon
 // ---------------------------------------------------------------------------
 
-const abandonSchema = z.object({ reason: z.string().trim().min(1) });
+const abandonSchema = z.object({ reason: z.string().trim().min(1).max(500) });
 
 router.post('/matches/:id/abandon', requireAuth, requireMatchRole('organizer', 'scorer'), async (req, res) => {
   const match = await loadMatch(param(req.params.id));
@@ -831,6 +841,120 @@ router.post('/matches/:id/abandon', requireAuth, requireMatchRole('organizer', '
   // still counts for no-result points (see standingsService.ts), and any
   // runs/wickets that happened before the interruption are still real
   // cricket that occurred.
+  if (match.group_id) {
+    await recomputeGroupStandings(match.group_id);
+  }
+  const matchPlayers = await db.selectFrom('match_players').select('player_id').where('match_id', '=', match.id).execute();
+  if (matchPlayers.length) {
+    await recomputePlayerCareerStats(matchPlayers.map((p) => p.player_id));
+  }
+
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// POST /matches/:id/cancel — before a ball is ever bowled (ground unavailable,
+// a team withdraws, etc.). Distinct from /abandon: a cancelled match never
+// started, carries no result, and correctly never appears in standings
+// (standingsService only looks at 'completed'/'abandoned' matches).
+// ---------------------------------------------------------------------------
+
+const cancelSchema = z.object({ reason: z.string().trim().min(1).max(500) });
+
+router.post('/matches/:id/cancel', requireAuth, requireMatchRole('organizer', 'scorer'), async (req, res) => {
+  const match = await loadMatch(param(req.params.id));
+  if (!match) {
+    res.status(404).json({ error: 'Match not found' });
+    return;
+  }
+  if (match.status !== 'scheduled') {
+    res.status(409).json({ error: `Only a match that hasn't had its toss yet can be cancelled (status: ${match.status})` });
+    return;
+  }
+
+  const parsed = cancelSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Validation failed', fields: zodFieldErrors(parsed.error) });
+    return;
+  }
+
+  await db.transaction().execute(async (trx) => {
+    await trx
+      .updateTable('matches')
+      .set({ status: 'cancelled', result_note: parsed.data.reason, updated_at: new Date() })
+      .where('id', '=', match.id)
+      .execute();
+
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'match',
+      entityId: match.id,
+      action: 'cancel',
+      afterState: { reason: parsed.data.reason },
+      reason: parsed.data.reason,
+    });
+  });
+
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// POST /matches/:id/forfeit — a team fails to show up / concedes. Unlike
+// abandon (no result) this is a decisive result: the other team gets the
+// win and the points that come with it, same as winning on the field.
+// ---------------------------------------------------------------------------
+
+const forfeitSchema = z.object({ winner_team_id: z.string().uuid(), reason: z.string().trim().max(500).optional() });
+
+router.post('/matches/:id/forfeit', requireAuth, requireMatchRole('organizer', 'scorer'), async (req, res) => {
+  const match = await loadMatch(param(req.params.id));
+  if (!match) {
+    res.status(404).json({ error: 'Match not found' });
+    return;
+  }
+  if (['completed', 'abandoned', 'cancelled', 'forfeited'].includes(match.status)) {
+    res.status(409).json({ error: `Match already finished (status: ${match.status})` });
+    return;
+  }
+
+  const parsed = forfeitSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Validation failed', fields: zodFieldErrors(parsed.error) });
+    return;
+  }
+  if (parsed.data.winner_team_id !== match.team_a_id && parsed.data.winner_team_id !== match.team_b_id) {
+    res.status(400).json({ error: 'winner_team_id must be one of the two teams playing this match' });
+    return;
+  }
+
+  const result = parsed.data.winner_team_id === match.team_a_id ? 'team_a_won' : 'team_b_won';
+
+  await db.transaction().execute(async (trx) => {
+    await trx
+      .updateTable('matches')
+      .set({
+        status: 'forfeited',
+        result,
+        winner_team_id: parsed.data.winner_team_id,
+        result_note: parsed.data.reason ? `Won by forfeit — ${parsed.data.reason}` : 'Won by forfeit',
+        updated_at: new Date(),
+      })
+      .where('id', '=', match.id)
+      .execute();
+
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'match',
+      entityId: match.id,
+      action: 'forfeit',
+      afterState: { winner_team_id: parsed.data.winner_team_id, reason: parsed.data.reason },
+      reason: parsed.data.reason,
+    });
+  });
+
+  // A forfeit is a decisive result — standings must reflect it just like
+  // any other completed match. Career stats only if a playing XI existed
+  // (a forfeit can happen before either XI is even set).
   if (match.group_id) {
     await recomputeGroupStandings(match.group_id);
   }
