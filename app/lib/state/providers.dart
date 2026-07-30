@@ -19,8 +19,10 @@ final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 
 final pendingDeliveryQueueProvider = Provider<PendingDeliveryQueue>((ref) => PendingDeliveryQueue());
 
-final tournamentsProvider = FutureProvider<Paginated<Tournament>>((ref) {
-  return ref.watch(apiClientProvider).getTournaments();
+typedef TournamentFilter = ({String? q, String? country, int? seasonYear, String? ball});
+
+final tournamentsProvider = FutureProvider.family<Paginated<Tournament>, TournamentFilter>((ref, filter) {
+  return ref.watch(apiClientProvider).getTournaments(q: filter.q, country: filter.country, seasonYear: filter.seasonYear, ball: filter.ball);
 });
 
 final tournamentProvider = FutureProvider.family<Tournament, String>((ref, slug) {

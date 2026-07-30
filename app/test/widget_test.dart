@@ -13,7 +13,7 @@ void main() {
       ProviderScope(
         overrides: [
           tournamentsProvider.overrideWith(
-            (ref) async => Paginated<Tournament>(
+            (ref, filter) async => Paginated<Tournament>(
               data: const [],
               pageInfo: const PageInfo(page: 1, limit: 20, total: 0, totalPages: 1),
             ),
@@ -26,6 +26,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Tournaments'), findsWidgets);
-    expect(find.text('No tournaments yet.'), findsOneWidget);
+    expect(find.text('No tournaments match those filters.'), findsOneWidget);
   });
 }

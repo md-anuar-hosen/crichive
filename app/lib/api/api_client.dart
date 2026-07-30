@@ -217,8 +217,25 @@ class ApiClient {
   // Public read routes
   // ---------------------------------------------------------------------
 
-  Future<Paginated<Tournament>> getTournaments({int page = 1, int limit = 20}) async {
-    final res = await _dio.get('/tournaments', queryParameters: {'page': page, 'limit': limit});
+  Future<Paginated<Tournament>> getTournaments({
+    int page = 1,
+    int limit = 20,
+    String? q,
+    String? country,
+    int? seasonYear,
+    String? ball,
+  }) async {
+    final res = await _dio.get(
+      '/tournaments',
+      queryParameters: {
+        'page': page,
+        'limit': limit,
+        'q': ?q,
+        'country': ?country,
+        'season_year': ?seasonYear?.toString(),
+        'ball': ?ball,
+      },
+    );
     return Paginated.fromJson(res.data as Map<String, dynamic>, Tournament.fromJson);
   }
 
