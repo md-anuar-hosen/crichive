@@ -48,6 +48,18 @@ class TournamentListScreen extends ConsumerWidget {
               itemBuilder: (context, index) {
                 final t = page.data[index];
                 return ListTile(
+                  leading: t.logoUrl == null
+                      ? null
+                      : ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Image.network(
+                            t.logoUrl!,
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const Icon(Icons.emoji_events_outlined),
+                          ),
+                        ),
                   title: Text(t.name),
                   subtitle: Text(
                     [

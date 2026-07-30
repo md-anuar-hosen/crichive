@@ -187,6 +187,11 @@ class ApiClient {
     return TournamentRules.fromJson((res.data as Map<String, dynamic>)['rules'] as Map<String, dynamic>);
   }
 
+  /// Organiser-only. Pass an empty string for [logoUrl] to clear it.
+  Future<void> updateTournamentBranding(String slug, {String? logoUrl, String? organizerOrg}) async {
+    await _dio.patch('/tournaments/$slug', data: {'logo_url': ?logoUrl, 'organizer_org': ?organizerOrg});
+  }
+
   // ---------------------------------------------------------------------
   // GDPR data requests
   // ---------------------------------------------------------------------

@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../api/api_exception.dart';
 import '../models/bracket.dart';
 import '../models/fixture.dart';
 import '../models/team.dart';
+import '../models/tournament.dart';
 import '../state/auth_controller.dart';
 import '../state/providers.dart';
 import '../widgets/async_value_view.dart';
@@ -18,6 +20,38 @@ class TournamentDetailScreen extends ConsumerWidget {
   final String slug;
   final int initialTabIndex;
 
+  Future<void> _editBranding(BuildContext context, WidgetRef ref, Tournament current) async {
+    final logoController = TextEditingController(text: current.logoUrl ?? '');
+    final orgController = TextEditingController(text: current.organizerOrg ?? '');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Tournament branding'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: logoController, decoration: const InputDecoration(labelText: 'Logo URL (leave blank to remove)')),
+            const SizedBox(height: 12),
+            TextField(controller: orgController, decoration: const InputDecoration(labelText: 'Organising club/association')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (saved != true) return;
+
+    try {
+      await ref.read(apiClientProvider).updateTournamentBranding(slug, logoUrl: logoController.text.trim(), organizerOrg: orgController.text.trim());
+      ref.invalidate(tournamentProvider(slug));
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tournament = ref.watch(tournamentProvider(slug));
@@ -28,12 +62,26 @@ class TournamentDetailScreen extends ConsumerWidget {
       initialIndex: initialTabIndex,
       child: Scaffold(
         appBar: AppBar(
+          leading: tournament.whenOrNull(data: (t) => t.logoUrl) != null
+              ? Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.network(tournament.value!.logoUrl!, errorBuilder: (_, _, _) => const Icon(Icons.emoji_events_outlined)),
+                  ),
+                )
+              : null,
           title: Text(
             tournament.whenOrNull(data: (t) => t.name) ?? 'Tournament',
             overflow: TextOverflow.ellipsis,
           ),
           actions: [
-            if (isAuthed)
+            if (isAuthed) ...[
+              IconButton(
+                tooltip: 'Edit branding',
+                icon: const Icon(Icons.image_outlined),
+                onPressed: tournament.value == null ? null : () => _editBranding(context, ref, tournament.value!),
+              ),
               IconButton(
                 tooltip: 'Edit rules',
                 icon: const Icon(Icons.tune),
@@ -41,6 +89,7 @@ class TournamentDetailScreen extends ConsumerWidget {
                   MaterialPageRoute(builder: (_) => TournamentRulesScreen(tournamentSlug: slug)),
                 ),
               ),
+            ],
           ],
           bottom: const TabBar(
             isScrollable: true,
