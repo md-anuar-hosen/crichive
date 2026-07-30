@@ -1240,4 +1240,104 @@ router.patch(
   },
 );
 
+// ---------------------------------------------------------------------------
+// POST /tournaments/:slug/matches — organizer-only. Schedules a single
+// fixture. This is the only way a match gets created outside of the
+// dev-only seed script and the knockout bracket generator — there was no
+// route for it at all until now, meaning no real organizer could ever
+// schedule a group-stage/round-robin match, or even a single one-off
+// friendly, through the app. group_id/ground_id/scheduled_start are all
+// optional — a match doesn't need to belong to a group (matches.group_id
+// is nullable, same as a bracket match) to be scored.
+// ---------------------------------------------------------------------------
+
+const createMatchSchema = z.object({
+  team_a_id: z.string().uuid(),
+  team_b_id: z.string().uuid(),
+  group_id: z.string().uuid().optional(),
+  ground_id: z.string().uuid().optional(),
+  scheduled_start: z.string().datetime().optional(),
+});
+
+router.post('/tournaments/:slug/matches', requireAuth, resolveTournamentBySlug, requireTournamentRole('organizer'), async (req, res) => {
+  const parsed = createMatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Validation failed', fields: zodFieldErrors(parsed.error) });
+    return;
+  }
+  const tournamentId = req.params.tournamentId as string;
+  const data = parsed.data;
+
+  if (data.team_a_id === data.team_b_id) {
+    res.status(400).json({ error: 'team_a_id and team_b_id must differ' });
+    return;
+  }
+
+  const teamRows = await db.selectFrom('tournament_teams').select('team_id').where('tournament_id', '=', tournamentId).where('team_id', 'in', [data.team_a_id, data.team_b_id]).execute();
+  if (teamRows.length !== 2) {
+    res.status(400).json({ error: 'Both teams must already be part of this tournament' });
+    return;
+  }
+
+  if (data.group_id) {
+    const group = await db
+      .selectFrom('groups')
+      .innerJoin('stages', 'stages.id', 'groups.stage_id')
+      .select('groups.id')
+      .where('groups.id', '=', data.group_id)
+      .where('stages.tournament_id', '=', tournamentId)
+      .executeTakeFirst();
+    if (!group) {
+      res.status(400).json({ error: 'group_id does not belong to this tournament' });
+      return;
+    }
+  }
+
+  if (data.ground_id) {
+    const ground = await db.selectFrom('grounds').select('id').where('id', '=', data.ground_id).executeTakeFirst();
+    if (!ground) {
+      res.status(400).json({ error: 'Ground not found' });
+      return;
+    }
+  }
+
+  const match = await db.transaction().execute(async (trx) => {
+    const maxMatchNumber = await trx
+      .selectFrom('matches')
+      .select((eb) => eb.fn.max('match_number').as('m'))
+      .where('tournament_id', '=', tournamentId)
+      .executeTakeFirst();
+
+    const group = data.group_id ? await trx.selectFrom('groups').select('stage_id').where('id', '=', data.group_id).executeTakeFirst() : undefined;
+
+    const inserted = await trx
+      .insertInto('matches')
+      .values({
+        id: randomUUID(),
+        tournament_id: tournamentId,
+        stage_id: group?.stage_id ?? null,
+        group_id: data.group_id ?? null,
+        ground_id: data.ground_id ?? null,
+        scheduled_start: data.scheduled_start ? new Date(data.scheduled_start) : null,
+        match_number: (maxMatchNumber?.m ?? 0) + 1,
+        team_a_id: data.team_a_id,
+        team_b_id: data.team_b_id,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'match',
+      entityId: inserted.id,
+      action: 'schedule',
+      afterState: { team_a_id: data.team_a_id, team_b_id: data.team_b_id, group_id: data.group_id ?? null, scheduled_start: data.scheduled_start ?? null },
+    });
+
+    return inserted;
+  });
+
+  res.status(201).json({ match_id: match.id, match_number: match.match_number });
+});
+
 export default router;
