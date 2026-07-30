@@ -11,6 +11,7 @@ import scoringRouter from './routes/scoring';
 import dataRequestsRouter from './routes/dataRequests';
 import squadsRouter from './routes/squads';
 import tournamentsRouter from './routes/tournaments';
+import bracketsRouter from './routes/brackets';
 import { attachRealtimeServer } from './realtime/server';
 import { requestLogging } from './middleware/requestLogging';
 
@@ -58,6 +59,7 @@ app.use(scoringRateLimit, scoringRouter);
 // would otherwise swallow literal routes like GET /tournaments/pending first,
 // since Express matches in registration order, not by specificity.
 app.use(publicRateLimit, tournamentsRouter);
+app.use(publicRateLimit, bracketsRouter);
 app.use(publicRateLimit, publicRouter);
 app.use(publicRateLimit, dataRequestsRouter);
 app.use(publicRateLimit, squadsRouter);

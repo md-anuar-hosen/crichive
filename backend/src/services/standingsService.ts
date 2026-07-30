@@ -31,12 +31,17 @@ export async function recomputeGroupStandings(groupId: string): Promise<void> {
   const teams = await db.selectFrom('teams').select(['id', 'name']).where('id', 'in', teamIds).execute();
   const teamNameById = new Map(teams.map((t) => [t.id, t.name]));
 
-  const matches = await db
+  const rawMatches = await db
     .selectFrom('matches')
     .select(['id', 'tournament_id', 'team_a_id', 'team_b_id', 'result', 'winner_team_id', 'overs_override', 'status'])
     .where('group_id', '=', groupId)
     .where('status', 'in', ['completed', 'abandoned'])
     .execute();
+
+  // A group-stage match always has both teams known when created — only
+  // bracket (knockout) matches can have a null team, and those never
+  // belong to a group. This narrows the type to match that reality.
+  const matches = rawMatches.filter((m): m is typeof m & { team_a_id: string; team_b_id: string } => m.team_a_id !== null && m.team_b_id !== null);
 
   if (matches.length === 0) {
     await db.deleteFrom('standings').where('group_id', '=', groupId).execute();

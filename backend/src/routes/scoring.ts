@@ -68,6 +68,10 @@ router.post('/matches/:id/toss', requireAuth, requireMatchRole('organizer', 'sco
     res.status(409).json({ error: `Toss already recorded for this match (status: ${match.status})` });
     return;
   }
+  if (match.team_a_id === null || match.team_b_id === null) {
+    res.status(409).json({ error: 'Both teams for this match are not decided yet (this is a knockout slot waiting on an earlier result)' });
+    return;
+  }
 
   const parsed = tossSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -700,6 +704,8 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
       .where('innings_number', '=', firstOfPairNumber)
       .executeTakeFirstOrThrow();
 
+    let winnerTeamId: string | null = null;
+
     if (outcome.kind === 'tie') {
       await trx
         .updateTable('matches')
@@ -712,6 +718,7 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
         .where('id', '=', match.id)
         .execute();
     } else if (outcome.kind === 'batting_first_won') {
+      winnerTeamId = pairFirst.batting_team_id;
       await trx
         .updateTable('matches')
         .set({
@@ -725,6 +732,7 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
         .where('id', '=', match.id)
         .execute();
     } else {
+      winnerTeamId = pairFirst.bowling_team_id;
       await trx
         .updateTable('matches')
         .set({
@@ -736,6 +744,18 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
           updated_at: new Date(),
         })
         .where('id', '=', match.id)
+        .execute();
+    }
+
+    // Bracket auto-advancement: a decisive knockout match's winner slots
+    // straight into whichever match/slot it feeds. A tie has no winner to
+    // advance — that's left for the organizer to resolve manually (rare:
+    // only possible with the Super Over disabled, or a tied Super Over).
+    if (winnerTeamId && match.next_match_id && match.next_match_slot) {
+      await trx
+        .updateTable('matches')
+        .set(match.next_match_slot === 'team_a' ? { team_a_id: winnerTeamId, updated_at: new Date() } : { team_b_id: winnerTeamId, updated_at: new Date() })
+        .where('id', '=', match.next_match_id)
         .execute();
     }
 

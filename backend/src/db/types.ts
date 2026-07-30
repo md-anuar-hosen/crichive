@@ -179,11 +179,16 @@ export interface InningsTotals {
 
 export interface Matches {
   actual_start: Timestamp | null;
+  bracket_round: number | null;
+  bracket_seed_a: number | null;
+  bracket_seed_b: number | null;
   created_at: Generated<Timestamp>;
   ground_id: string | null;
   group_id: string | null;
   id: Generated<string>;
   match_number: number | null;
+  next_match_id: string | null;
+  next_match_slot: string | null;
   overs_override: number | null;
   player_of_match_id: string | null;
   result: MatchResult | null;
@@ -191,8 +196,8 @@ export interface Matches {
   scheduled_start: Timestamp | null;
   stage_id: string | null;
   status: Generated<MatchStatus>;
-  team_a_id: string;
-  team_b_id: string;
+  team_a_id: string | null;
+  team_b_id: string | null;
   toss_decision: TossDecision | null;
   toss_winner_id: string | null;
   tournament_id: string;
