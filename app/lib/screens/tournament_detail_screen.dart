@@ -12,6 +12,7 @@ import '../state/auth_controller.dart';
 import '../state/providers.dart';
 import '../widgets/async_value_view.dart';
 import 'create_bracket_screen.dart';
+import 'schedule_match_screen.dart';
 import 'tournament_rules_screen.dart';
 
 class TournamentDetailScreen extends ConsumerWidget {
@@ -116,6 +117,15 @@ class TournamentDetailScreen extends ConsumerWidget {
           ),
           actions: [
             if (isAuthed) ...[
+              IconButton(
+                tooltip: 'Schedule a match',
+                icon: const Icon(Icons.add),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ScheduleMatchScreen(tournamentSlug: slug),
+                  ),
+                ),
+              ),
               IconButton(
                 tooltip: 'Edit branding',
                 icon: const Icon(Icons.image_outlined),

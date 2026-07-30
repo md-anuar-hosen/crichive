@@ -124,6 +124,26 @@ class ApiClient {
   // here means this user lacks the tournament role, not a client bug)
   // ---------------------------------------------------------------------
 
+  /// Organiser-only. The only way a match gets created outside the knockout
+  /// bracket generator — covers a single one-off fixture just as well as a
+  /// small round-robin scheduled one match at a time.
+  Future<String> createMatch(
+    String tournamentSlug, {
+    required String teamAId,
+    required String teamBId,
+    DateTime? scheduledStart,
+  }) async {
+    final res = await _dio.post(
+      '/tournaments/$tournamentSlug/matches',
+      data: {
+        'team_a_id': teamAId,
+        'team_b_id': teamBId,
+        'scheduled_start': ?scheduledStart?.toUtc().toIso8601String(),
+      },
+    );
+    return (res.data as Map<String, dynamic>)['match_id'] as String;
+  }
+
   Future<void> recordToss(
     String matchId, {
     required String winnerTeamId,
