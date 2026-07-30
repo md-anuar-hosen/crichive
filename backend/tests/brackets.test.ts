@@ -16,7 +16,7 @@ describe('Knockout brackets', () => {
   const teams = [teamA, teamB, teamC, teamD];
   // A player can only be in one squad per tournament (team_squads' one_team_per_tournament
   // constraint), so each team needs its own pair, not a shared p1-p4.
-  const playersByTeam = new Map(teams.map((team) => [team, [randomUUID(), randomUUID()] as [string, string]]));
+  const playersByTeam = new Map<string, [string, string]>(teams.map((team) => [team, [randomUUID(), randomUUID()]]));
   const allPlayerIds = [...playersByTeam.values()].flat();
 
   let token: string;

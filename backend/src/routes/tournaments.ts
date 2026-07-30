@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { db } from '../db/index';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireTournamentRole } from '../middleware/auth';
 import { requirePlatformAdmin } from '../middleware/platformAdmin';
 import { writeAuditLog } from '../services/auditLog';
 
@@ -151,6 +151,59 @@ router.post('/tournaments', requireAuth, async (req, res) => {
     }
     throw err;
   }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /tournaments/:slug — organizer-only branding edits. Both fields
+// (logo_url, organizer_org) existed unused in the schema since the first
+// migration; there was never a route to set either of them.
+// ---------------------------------------------------------------------------
+
+/** requireTournamentRole reads req.params.tournamentId; this route is keyed by :slug. */
+async function resolveTournamentBySlug(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1], next: Parameters<typeof requireAuth>[2]) {
+  const tournament = await db.selectFrom('tournaments').select('id').where('slug', '=', req.params.slug).executeTakeFirst();
+  if (!tournament) {
+    res.status(404).json({ error: 'Tournament not found' });
+    return;
+  }
+  req.params.tournamentId = tournament.id;
+  next();
+}
+
+const brandingSchema = z
+  .object({
+    logo_url: z.union([z.string().trim().url(), z.literal('')]).nullable(),
+    organizer_org: z.string().trim().nullable(),
+  })
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, { message: 'At least one field is required' });
+
+router.patch('/tournaments/:slug', requireAuth, resolveTournamentBySlug, requireTournamentRole('organizer'), async (req, res) => {
+  const parsed = brandingSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Validation failed', fields: zodFieldErrors(parsed.error) });
+    return;
+  }
+  const tournamentId = req.params.tournamentId as string;
+  const updates: { logo_url?: string | null; organizer_org?: string | null } = {};
+  if (parsed.data.logo_url !== undefined) updates.logo_url = parsed.data.logo_url === '' ? null : parsed.data.logo_url;
+  if (parsed.data.organizer_org !== undefined) updates.organizer_org = parsed.data.organizer_org;
+
+  const updated = await db.transaction().execute(async (trx) => {
+    const row = await trx.updateTable('tournaments').set(updates).where('id', '=', tournamentId).returningAll().executeTakeFirstOrThrow();
+
+    await writeAuditLog(trx, {
+      actorUserId: req.user!.sub,
+      entityType: 'tournament',
+      entityId: tournamentId,
+      action: 'update_branding',
+      afterState: updates,
+    });
+
+    return row;
+  });
+
+  res.json({ tournament: { id: updated.id, logo_url: updated.logo_url, organizer_org: updated.organizer_org } });
 });
 
 // ---------------------------------------------------------------------------

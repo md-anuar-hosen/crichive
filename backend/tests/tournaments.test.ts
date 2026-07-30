@@ -80,6 +80,27 @@ describe('Tournament creation + organiser-approval mode', () => {
     20000,
   );
 
+  it('branding: the organizer can set a logo and org, a non-organizer cannot, and an invalid URL is rejected', async () => {
+    const asOwner = await request(app)
+      .patch(`/tournaments/${openSlug}`)
+      .set('Authorization', `Bearer ${creatorAToken}`)
+      .send({ logo_url: 'https://example.com/logo.png', organizer_org: 'Cricket Finland' });
+    expect(asOwner.status).toBe(200);
+    expect(asOwner.body.tournament.logo_url).toBe('https://example.com/logo.png');
+    expect(asOwner.body.tournament.organizer_org).toBe('Cricket Finland');
+
+    const asOutsider = await request(app).patch(`/tournaments/${openSlug}`).set('Authorization', `Bearer ${creatorBToken}`).send({ organizer_org: 'Hijacked' });
+    expect(asOutsider.status).toBe(403);
+
+    const badUrl = await request(app).patch(`/tournaments/${openSlug}`).set('Authorization', `Bearer ${creatorAToken}`).send({ logo_url: 'not-a-url' });
+    expect(badUrl.status).toBe(400);
+
+    // An empty string clears the logo rather than being rejected as an invalid URL.
+    const cleared = await request(app).patch(`/tournaments/${openSlug}`).set('Authorization', `Bearer ${creatorAToken}`).send({ logo_url: '' });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.tournament.logo_url).toBeNull();
+  });
+
   it(
     'approval_required mode: stays private and organizer-only until a platform admin approves it',
     async () => {
