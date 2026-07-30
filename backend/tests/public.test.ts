@@ -56,6 +56,31 @@ describe('public read API', () => {
     assertNoPii(res.body);
   });
 
+  it('GET /tournaments filters by name/org search, country, season year, and ball type', async () => {
+    const byName = await request(app).get('/tournaments').query({ q: 'finn-bangla' });
+    expect(byName.status).toBe(200);
+    expect(byName.body.data.some((t: { slug: string }) => t.slug === tournamentSlug)).toBe(true);
+
+    const noMatch = await request(app).get('/tournaments').query({ q: 'no-such-tournament-name-xyz' });
+    expect(noMatch.body.data).toHaveLength(0);
+
+    const byCountry = await request(app).get('/tournaments').query({ country: 'fi' });
+    expect(byCountry.status).toBe(200);
+    expect(byCountry.body.data.some((t: { slug: string }) => t.slug === tournamentSlug)).toBe(true);
+
+    const wrongCountry = await request(app).get('/tournaments').query({ country: 'us' });
+    expect(wrongCountry.body.data.some((t: { slug: string }) => t.slug === tournamentSlug)).toBe(false);
+
+    const bySeason = await request(app).get('/tournaments').query({ season_year: '2026' });
+    expect(bySeason.body.data.some((t: { slug: string }) => t.slug === tournamentSlug)).toBe(true);
+
+    const byBall = await request(app).get('/tournaments').query({ ball: 'leather' });
+    expect(byBall.status).toBe(200);
+
+    const invalidBallIgnored = await request(app).get('/tournaments').query({ ball: 'not-a-real-ball-type' });
+    expect(invalidBallIgnored.status).toBe(200); // an unrecognized filter value is ignored, not a 400 — no user-facing error mode to design for.
+  });
+
   it('GET /tournaments/:slug carries no PII', async () => {
     const res = await request(app).get(`/tournaments/${tournamentSlug}`);
     expect(res.status).toBe(200);

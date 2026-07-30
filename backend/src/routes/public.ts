@@ -19,22 +19,38 @@ async function findTournamentBySlug(slug: string) {
 
 router.get('/tournaments', async (req, res) => {
   const pagination = parsePagination(req.query);
+  const { q, country, season_year: seasonYear, ball } = req.query;
+
+  let query = db.selectFrom('tournaments').where('is_public', '=', true);
+  let countQuery = db.selectFrom('tournaments').where('is_public', '=', true);
+
+  if (typeof q === 'string' && q.trim()) {
+    const term = q.trim();
+    query = query.where((eb) => eb.or([eb('name', 'ilike', `%${term}%`), eb('organizer_org', 'ilike', `%${term}%`)]));
+    countQuery = countQuery.where((eb) => eb.or([eb('name', 'ilike', `%${term}%`), eb('organizer_org', 'ilike', `%${term}%`)]));
+  }
+  if (typeof country === 'string' && country.length === 2) {
+    query = query.where('country_code', '=', country.toUpperCase());
+    countQuery = countQuery.where('country_code', '=', country.toUpperCase());
+  }
+  if (typeof seasonYear === 'string' && Number.isInteger(Number(seasonYear))) {
+    query = query.where('season_year', '=', Number(seasonYear));
+    countQuery = countQuery.where('season_year', '=', Number(seasonYear));
+  }
+  if (typeof ball === 'string' && ['leather', 'tennis', 'tape'].includes(ball)) {
+    query = query.where('ball', '=', ball as 'leather' | 'tennis' | 'tape');
+    countQuery = countQuery.where('ball', '=', ball as 'leather' | 'tennis' | 'tape');
+  }
 
   const [rows, countRow] = await Promise.all([
-    db
-      .selectFrom('tournaments')
+    query
       .selectAll()
-      .where('is_public', '=', true)
       .orderBy('season_year', 'desc')
       .orderBy('name', 'asc')
       .limit(pagination.limit)
       .offset(pagination.offset)
       .execute(),
-    db
-      .selectFrom('tournaments')
-      .select((eb) => eb.fn.countAll<string>().as('count'))
-      .where('is_public', '=', true)
-      .executeTakeFirstOrThrow(),
+    countQuery.select((eb) => eb.fn.countAll<string>().as('count')).executeTakeFirstOrThrow(),
   ]);
 
   res.json(paginated(rows.map(serializeTournament), pagination, Number(countRow.count)));
