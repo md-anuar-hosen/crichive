@@ -14,6 +14,7 @@ import '../widgets/async_value_view.dart';
 import 'create_bracket_screen.dart';
 import 'schedule_match_screen.dart';
 import 'tournament_rules_screen.dart';
+import 'tournament_scorers_screen.dart';
 
 class TournamentDetailScreen extends ConsumerWidget {
   const TournamentDetailScreen({
@@ -139,6 +140,16 @@ class TournamentDetailScreen extends ConsumerWidget {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => TournamentRulesScreen(tournamentSlug: slug),
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Scorers',
+                icon: const Icon(Icons.edit_note_outlined),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        TournamentScorersScreen(tournamentSlug: slug),
                   ),
                 ),
               ),

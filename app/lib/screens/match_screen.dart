@@ -11,6 +11,7 @@ import '../theme/chart_palette.dart';
 import '../utils/cricket_math.dart';
 import '../widgets/async_value_view.dart';
 import 'match_charts_screen.dart';
+import 'match_scorers_screen.dart';
 import 'match_squads_screen.dart';
 import 'playing_xi_screen.dart';
 import 'scoring_screen.dart';
@@ -104,6 +105,11 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
         );
       case 'score':
         screen = ScoringScreen(matchId: match.id);
+      case 'manage_scorers':
+        screen = MatchScorersScreen(
+          matchId: match.id,
+          tournamentSlug: match.tournamentSlug,
+        );
       default:
         return;
     }
@@ -586,6 +592,10 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
                         child: Text('Playing XI — ${m.teamB.label}'),
                       ),
                       const PopupMenuItem(value: 'score', child: Text('Score')),
+                      const PopupMenuItem(
+                        value: 'manage_scorers',
+                        child: Text('Manage scorers'),
+                      ),
                       if (dlsEnabled &&
                           !isTest &&
                           !_finishedStatuses.contains(m.status) &&

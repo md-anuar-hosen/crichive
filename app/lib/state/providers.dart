@@ -18,15 +18,36 @@ import '../services/pending_delivery_queue.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 
-final pendingDeliveryQueueProvider = Provider<PendingDeliveryQueue>((ref) => PendingDeliveryQueue());
+final pendingDeliveryQueueProvider = Provider<PendingDeliveryQueue>(
+  (ref) => PendingDeliveryQueue(),
+);
 
-typedef TournamentFilter = ({String? q, String? country, int? seasonYear, String? ball});
-
-final tournamentsProvider = FutureProvider.family<Paginated<Tournament>, TournamentFilter>((ref, filter) {
-  return ref.watch(apiClientProvider).getTournaments(q: filter.q, country: filter.country, seasonYear: filter.seasonYear, ball: filter.ball);
+typedef TournamentFilter = ({
+  String? q,
+  String? country,
+  int? seasonYear,
+  String? ball,
 });
 
-final tournamentProvider = FutureProvider.family<Tournament, String>((ref, slug) {
+final tournamentsProvider =
+    FutureProvider.family<Paginated<Tournament>, TournamentFilter>((
+      ref,
+      filter,
+    ) {
+      return ref
+          .watch(apiClientProvider)
+          .getTournaments(
+            q: filter.q,
+            country: filter.country,
+            seasonYear: filter.seasonYear,
+            ball: filter.ball,
+          );
+    });
+
+final tournamentProvider = FutureProvider.family<Tournament, String>((
+  ref,
+  slug,
+) {
   return ref.watch(apiClientProvider).getTournament(slug);
 });
 
@@ -34,49 +55,92 @@ final platformSettingsProvider = FutureProvider<PlatformSettings>((ref) {
   return ref.watch(apiClientProvider).getPlatformSettings();
 });
 
-final pendingTournamentsProvider = FutureProvider<List<PendingTournament>>((ref) {
+final pendingTournamentsProvider = FutureProvider<List<PendingTournament>>((
+  ref,
+) {
   return ref.watch(apiClientProvider).getPendingTournaments();
 });
 
-final dataRequestsProvider = FutureProvider.family<List<DataRequest>, String?>((ref, status) {
+final dataRequestsProvider = FutureProvider.family<List<DataRequest>, String?>((
+  ref,
+  status,
+) {
   return ref.watch(apiClientProvider).getDataRequests(status: status);
 });
 
-final teamsProvider = FutureProvider.family<Paginated<Team>, String>((ref, slug) {
+final teamsProvider = FutureProvider.family<Paginated<Team>, String>((
+  ref,
+  slug,
+) {
   return ref.watch(apiClientProvider).getTeams(slug);
 });
 
-final fixturesProvider = FutureProvider.family<Paginated<Fixture>, String>((ref, slug) {
+final fixturesProvider = FutureProvider.family<Paginated<Fixture>, String>((
+  ref,
+  slug,
+) {
   return ref.watch(apiClientProvider).getFixtures(slug);
 });
 
-final standingsProvider = FutureProvider.family<List<StandingGroup>, String>((ref, slug) {
+final standingsProvider = FutureProvider.family<List<StandingGroup>, String>((
+  ref,
+  slug,
+) {
   return ref.watch(apiClientProvider).getStandings(slug);
 });
 
-final knockoutBracketProvider = FutureProvider.family<KnockoutBracket, String>((ref, slug) {
+final knockoutBracketProvider = FutureProvider.family<KnockoutBracket, String>((
+  ref,
+  slug,
+) {
   return ref.watch(apiClientProvider).getKnockoutBracket(slug);
 });
 
-final awardsProvider = FutureProvider.family<TournamentAwards, String>((ref, slug) {
+final awardsProvider = FutureProvider.family<TournamentAwards, String>((
+  ref,
+  slug,
+) {
   return ref.watch(apiClientProvider).getTournamentAwards(slug);
 });
 
 typedef SquadKey = ({String teamId, String tournamentSlug});
 
-final squadProvider = FutureProvider.family<List<SquadPlayer>, SquadKey>((ref, key) {
+final squadProvider = FutureProvider.family<List<SquadPlayer>, SquadKey>((
+  ref,
+  key,
+) {
   return ref.watch(apiClientProvider).getSquad(key.teamId, key.tournamentSlug);
 });
 
 /// Same shape as [squadProvider] but includes pending (not-yet-approved)
 /// entries — only the tournament's organiser or that team's own manager
 /// can actually load this without a 403.
-final managedSquadProvider = FutureProvider.family<List<SquadPlayer>, SquadKey>((ref, key) {
-  return ref.watch(apiClientProvider).getManagedSquad(key.tournamentSlug, key.teamId);
-});
+final managedSquadProvider = FutureProvider.family<List<SquadPlayer>, SquadKey>(
+  (ref, key) {
+    return ref
+        .watch(apiClientProvider)
+        .getManagedSquad(key.tournamentSlug, key.teamId);
+  },
+);
 
-final teamManagersProvider = FutureProvider.family<List<TeamManager>, SquadKey>((ref, key) {
-  return ref.watch(apiClientProvider).getTeamManagers(key.tournamentSlug, key.teamId);
+final teamManagersProvider = FutureProvider.family<List<TeamManager>, SquadKey>(
+  (ref, key) {
+    return ref
+        .watch(apiClientProvider)
+        .getTeamManagers(key.tournamentSlug, key.teamId);
+  },
+);
+
+final tournamentScorersProvider =
+    FutureProvider.family<List<TeamManager>, String>((ref, tournamentSlug) {
+      return ref.watch(apiClientProvider).getTournamentScorers(tournamentSlug);
+    });
+
+final matchScorersProvider = FutureProvider.family<List<MatchScorer>, String>((
+  ref,
+  matchId,
+) {
+  return ref.watch(apiClientProvider).getMatchScorers(matchId);
 });
 
 final playerProvider = FutureProvider.family<PlayerDetail, String>((ref, id) {
@@ -93,6 +157,10 @@ final matchProvider = FutureProvider.family<MatchDetail, String>((ref, id) {
 
 typedef DeliveriesKey = ({String matchId, int inningsNumber});
 
-final deliveriesProvider = FutureProvider.family<List<Delivery>, DeliveriesKey>((ref, key) {
-  return ref.watch(apiClientProvider).getDeliveries(key.matchId, key.inningsNumber);
-});
+final deliveriesProvider = FutureProvider.family<List<Delivery>, DeliveriesKey>(
+  (ref, key) {
+    return ref
+        .watch(apiClientProvider)
+        .getDeliveries(key.matchId, key.inningsNumber);
+  },
+);

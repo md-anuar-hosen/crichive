@@ -669,6 +669,65 @@ class ApiClient {
     );
   }
 
+  // ---------------------------------------------------------------------
+  // Scorers — tournament-wide grant (who may ever score for this
+  // tournament) plus per-match assignment (which of those matches they may
+  // actually act on). With several matches running at once, only the
+  // assignment lets someone in.
+  // ---------------------------------------------------------------------
+
+  Future<List<TeamManager>> getTournamentScorers(String tournamentSlug) async {
+    final res = await _dio.get('/tournaments/$tournamentSlug/scorers');
+    final scorers = (res.data as Map<String, dynamic>)['scorers'] as List;
+    return scorers
+        .cast<Map<String, dynamic>>()
+        .map(TeamManager.fromJson)
+        .toList();
+  }
+
+  /// The person must already have a CricHive account. Returns the matched
+  /// account so the caller can confirm it's the right person before it's
+  /// too late to catch a typo'd email.
+  Future<TeamManager> grantTournamentScorer(
+    String tournamentSlug, {
+    required String email,
+  }) async {
+    final res = await _dio.post(
+      '/tournaments/$tournamentSlug/scorers',
+      data: {'email': email},
+    );
+    return TeamManager.fromJson(
+      (res.data as Map<String, dynamic>)['membership'] as Map<String, dynamic>,
+    );
+  }
+
+  Future<void> revokeTournamentScorer(
+    String tournamentSlug,
+    String membershipId,
+  ) async {
+    await _dio.delete('/tournaments/$tournamentSlug/scorers/$membershipId');
+  }
+
+  Future<List<MatchScorer>> getMatchScorers(String matchId) async {
+    final res = await _dio.get('/matches/$matchId/scorers');
+    final scorers = (res.data as Map<String, dynamic>)['scorers'] as List;
+    return scorers
+        .cast<Map<String, dynamic>>()
+        .map(MatchScorer.fromJson)
+        .toList();
+  }
+
+  Future<void> assignMatchScorer(
+    String matchId, {
+    required String userId,
+  }) async {
+    await _dio.post('/matches/$matchId/scorers', data: {'user_id': userId});
+  }
+
+  Future<void> unassignMatchScorer(String matchId, String userId) async {
+    await _dio.delete('/matches/$matchId/scorers/$userId');
+  }
+
   Future<List<Player>> searchPlayers(String query) async {
     final res = await _dio.get(
       '/players/search',

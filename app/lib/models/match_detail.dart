@@ -1,5 +1,6 @@
 import '../utils/cricket_math.dart';
 import 'json_utils.dart';
+import 'player.dart';
 import 'team.dart';
 
 class InningsTotals {
@@ -260,6 +261,7 @@ class MatchDetail {
     required this.currentDay,
     this.daysPerMatch,
     required this.followOnAvailable,
+    required this.assignedScorers,
     this.tossDecision,
     this.tossWinnerId,
     this.result,
@@ -289,6 +291,7 @@ class MatchDetail {
   /// True only right at the innings 2 -> 3 transition of a Test match, when
   /// the side that bowled second may enforce a follow-on.
   final bool followOnAvailable;
+  final List<MatchScorer> assignedScorers;
   final String? tossDecision;
   final String? tossWinnerId;
   final String? result;
@@ -319,6 +322,10 @@ class MatchDetail {
     currentDay: json['current_day'] as int? ?? 1,
     daysPerMatch: json['days_per_match'] as int?,
     followOnAvailable: json['follow_on_available'] as bool? ?? false,
+    assignedScorers: (json['assigned_scorers'] as List? ?? [])
+        .cast<Map<String, dynamic>>()
+        .map(MatchScorer.fromJson)
+        .toList(),
     tossDecision: json['toss_decision'] as String?,
     tossWinnerId: json['toss_winner_id'] as String?,
     result: json['result'] as String?,
