@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { db } from '../db/index';
 import { requireAuth, signAuthToken } from '../middleware/auth';
@@ -7,6 +8,17 @@ import { requireAuth, signAuthToken } from '../middleware/auth';
 const BCRYPT_COST = 12;
 
 const router = Router();
+
+// Credential-guessing endpoints need a much tighter limit than ordinary
+// public reads — 100/min (the general publicRateLimit these routes also
+// sit behind) is far too permissive for brute-forcing a login.
+const authAttemptLimit = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: true, legacyHeaders: false });
+
+// A fixed, precomputed hash to compare against when no such user exists, so
+// a login attempt takes the same time either way — without this, "no such
+// user" returns instantly while "wrong password" waits on a real bcrypt
+// comparison, letting an attacker enumerate registered emails by timing.
+const DUMMY_PASSWORD_HASH = await bcrypt.hash('no-such-user-timing-safety', BCRYPT_COST);
 
 function zodFieldErrors(error: z.ZodError): { field: string; message: string }[] {
   return error.issues.map((issue) => ({ field: issue.path.join('.') || '(root)', message: issue.message }));
@@ -18,7 +30,7 @@ const registerSchema = z.object({
   display_name: z.string().trim().min(1),
 });
 
-router.post('/register', async (req, res) => {
+router.post('/register', authAttemptLimit, async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Validation failed', fields: zodFieldErrors(parsed.error) });
@@ -50,7 +62,7 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', authAttemptLimit, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Validation failed', fields: zodFieldErrors(parsed.error) });
@@ -64,13 +76,14 @@ router.post('/login', async (req, res) => {
     .where('email', '=', email)
     .executeTakeFirst();
 
-  if (!user || !user.password_hash || user.deleted_at) {
-    res.status(401).json({ error: 'Invalid email or password' });
-    return;
-  }
+  const validCredential = user?.password_hash && !user.deleted_at;
+  // Always run a real bcrypt comparison, even for a nonexistent account —
+  // otherwise a nonexistent email returns instantly while a wrong password
+  // waits on bcrypt, and that timing gap alone reveals which emails are
+  // registered.
+  const valid = await bcrypt.compare(password, validCredential ? user.password_hash! : DUMMY_PASSWORD_HASH);
 
-  const valid = await bcrypt.compare(password, user.password_hash);
-  if (!valid) {
+  if (!validCredential || !valid) {
     res.status(401).json({ error: 'Invalid email or password' });
     return;
   }
