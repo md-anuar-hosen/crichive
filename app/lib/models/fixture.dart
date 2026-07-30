@@ -41,6 +41,6 @@ class Fixture {
         ground: json['ground'] == null ? null : GroundRef.fromJson(json['ground'] as Map<String, dynamic>),
       );
 
-  bool get isLive => status == 'live' || status == 'innings_break' || status == 'toss_done';
+  bool get isLive => status == 'live' || status == 'innings_break' || status == 'toss_done' || status == 'super_over';
   bool get isCompleted => status == 'completed' || status == 'abandoned' || status == 'cancelled' || status == 'forfeited';
 }

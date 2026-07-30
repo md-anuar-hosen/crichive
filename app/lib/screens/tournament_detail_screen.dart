@@ -90,6 +90,7 @@ class _FixturesTab extends ConsumerWidget {
 
   String _subtitle(Fixture f) {
     if (f.isCompleted) return f.resultNote ?? 'Completed';
+    if (f.status == 'super_over') return 'Super Over';
     if (f.isLive) return 'Live now';
     if (f.scheduledStart == null) return f.status;
     return DateFormat.yMMMd().add_jm().format(f.scheduledStart!.toLocal());

@@ -273,5 +273,5 @@ class MatchDetail {
         innings: (json['innings'] as List).cast<Map<String, dynamic>>().map(InningsDetail.fromJson).toList(),
       );
 
-  bool get isLive => status == 'live' || status == 'innings_break' || status == 'toss_done';
+  bool get isLive => status == 'live' || status == 'innings_break' || status == 'toss_done' || status == 'super_over';
 }

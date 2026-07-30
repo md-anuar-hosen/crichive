@@ -230,7 +230,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
                   PopupMenuItem(value: 'xi_a', child: Text('Playing XI — ${m.teamA.label}')),
                   PopupMenuItem(value: 'xi_b', child: Text('Playing XI — ${m.teamB.label}')),
                   const PopupMenuItem(value: 'score', child: Text('Score')),
-                  if (dlsEnabled && !_finishedStatuses.contains(m.status) && m.innings.any((i) => i.closedAt == null))
+                  if (dlsEnabled && !_finishedStatuses.contains(m.status) && m.innings.any((i) => i.closedAt == null && !i.isSuperOver))
                     const PopupMenuItem(
                       value: 'interruption',
                       child: Text('Record rain interruption'),
@@ -384,9 +384,28 @@ class _InningsCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  _teamName(innings.battingTeamId),
-                  style: Theme.of(context).textTheme.titleMedium,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _teamName(innings.battingTeamId),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (innings.isSuperOver) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.tertiaryContainer,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'SUPER OVER',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onTertiaryContainer),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 if (totals != null)
                   Text(
