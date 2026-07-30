@@ -131,6 +131,7 @@ class ApiClient {
     String? wicketKind,
     String? playerOutId,
     String? fielderId,
+    String? commentary,
   }) async {
     final res = await _dio.post(
       '/matches/$matchId/deliveries',
@@ -149,6 +150,7 @@ class ApiClient {
         'wicket_kind': ?wicketKind,
         'player_out_id': ?playerOutId,
         'fielder_id': ?fielderId,
+        'commentary': ?commentary,
       },
     );
     return DeliveryResult.fromJson(res.data as Map<String, dynamic>);

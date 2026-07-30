@@ -20,6 +20,7 @@ class PendingDelivery {
     this.wicketKind,
     this.playerOutId,
     this.fielderId,
+    this.commentary,
     required this.queuedAt,
   });
 
@@ -38,6 +39,7 @@ class PendingDelivery {
   final String? wicketKind;
   final String? playerOutId;
   final String? fielderId;
+  final String? commentary;
   final DateTime queuedAt;
 
   Map<String, dynamic> toJson() => {
@@ -56,6 +58,7 @@ class PendingDelivery {
         'wicket_kind': wicketKind,
         'player_out_id': playerOutId,
         'fielder_id': fielderId,
+        'commentary': commentary,
         'queued_at': queuedAt.toIso8601String(),
       };
 
@@ -75,6 +78,7 @@ class PendingDelivery {
         wicketKind: json['wicket_kind'] as String?,
         playerOutId: json['player_out_id'] as String?,
         fielderId: json['fielder_id'] as String?,
+        commentary: json['commentary'] as String?,
         queuedAt: DateTime.parse(json['queued_at'] as String),
       );
 }

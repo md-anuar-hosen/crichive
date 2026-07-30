@@ -53,10 +53,18 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
   int _pendingCount = 0;
   bool _syncing = false;
 
+  final _commentaryController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
     _flushQueue(widget.matchId, silent: true);
+  }
+
+  @override
+  void dispose() {
+    _commentaryController.dispose();
+    super.dispose();
   }
 
   @override
@@ -212,6 +220,12 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
             allowNone: true,
           ),
         ],
+        const SizedBox(height: 16),
+        TextField(
+          controller: _commentaryController,
+          decoration: const InputDecoration(labelText: 'Commentary (optional)', hintText: 'e.g. "Beaten on the outside edge!"'),
+          maxLines: 2,
+        ),
         const SizedBox(height: 24),
         FilledButton(
           onPressed: _canSubmit() ? () => _submit(match.id, innings.inningsNumber) : null,
@@ -265,6 +279,7 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
         wicketKind: _isWicket ? _wicketKind : null,
         playerOutId: _isWicket ? _playerOutId : null,
         fielderId: _isWicket ? _fielderId : null,
+        commentary: _commentaryController.text.trim().isEmpty ? null : _commentaryController.text.trim(),
         queuedAt: DateTime.now(),
       );
 
@@ -285,6 +300,7 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
           wicketKind: d.wicketKind,
           playerOutId: d.playerOutId,
           fielderId: d.fielderId,
+          commentary: d.commentary,
         );
     return result.inningsComplete == true;
   }
@@ -366,6 +382,7 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
       if (inningsComplete) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Innings complete')));
       }
+      _commentaryController.clear();
       setState(() {
         _mode = _BallMode.legal;
         _runs = 0;

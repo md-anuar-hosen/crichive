@@ -92,6 +92,7 @@ void main() {
       wicketKind: 'caught',
       playerOutId: 'striker',
       fielderId: 'fielder-1',
+      commentary: 'Sharp catch at cover!',
       queuedAt: DateTime(2026, 3, 4, 12, 30),
     );
     await queue.enqueue(withWicket);
@@ -102,6 +103,7 @@ void main() {
     expect(round.extraByes, 2);
     expect(round.extraPenalty, 5);
     expect(round.wicketKind, 'caught');
+    expect(round.commentary, 'Sharp catch at cover!');
     expect(round.playerOutId, 'striker');
     expect(round.fielderId, 'fielder-1');
     expect(round.queuedAt, DateTime(2026, 3, 4, 12, 30));
