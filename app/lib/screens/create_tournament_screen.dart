@@ -119,6 +119,12 @@ class _CreateTournamentScreenState
       if (!mounted) return;
 
       if (tournament.isApproved) {
+        // This screen was reached via Navigator.push, sitting above
+        // go_router's own Navigator — context.go() alone only updates
+        // go_router's declarative state and never pops this imperative
+        // route, so the user is silently left staring at the create form.
+        // Pop it first so the router's Navigator is the one on top.
+        Navigator.of(context).pop();
         context.go('/tournaments/${tournament.slug}');
       } else {
         Navigator.of(context).pop();
