@@ -37,7 +37,7 @@ export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
 export type MatchResult = "abandoned" | "no_result" | "team_a_won" | "team_b_won" | "tie";
 
-export type MatchStatus = "abandoned" | "cancelled" | "completed" | "forfeited" | "innings_break" | "live" | "scheduled" | "toss_done";
+export type MatchStatus = "abandoned" | "cancelled" | "completed" | "forfeited" | "innings_break" | "live" | "scheduled" | "super_over" | "toss_done";
 
 export type Numeric = ColumnType<string, number | string, number | string>;
 

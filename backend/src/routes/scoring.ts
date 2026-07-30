@@ -303,9 +303,11 @@ router.post('/matches/:id/deliveries', requireAuth, requireMatchRole('organizer'
   const priorDeliveries: Delivery[] = priorRows.map(toDomainDelivery);
   const nonVoidedPrior = priorDeliveries.filter((d) => !d.voidedAt);
 
-  // A chase's target is the first innings' final total + 1; only relevant from innings 2 onward.
+  // A chase's target is the first innings of its pair's final total + 1 —
+  // innings 2 chases innings 1, innings 4 (super over) chases innings 3.
+  // Innings 1 and 3 are each the first of their own pair and never chase.
   let target: number | undefined;
-  if (body.innings_number > 1) {
+  if (body.innings_number === 2 || body.innings_number === 4) {
     const priorInnings = await db
       .selectFrom('innings')
       .innerJoin('innings_totals', 'innings_totals.innings_id', 'innings.id')
@@ -571,13 +573,61 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
     return;
   }
 
+  // Closing the first of a pair of super-over innings (number 3) works the
+  // same way as closing innings 1: create its partner (number 4) with the
+  // batting order swapped and a target set, don't decide the match yet.
+  if (inningsNumber === 3) {
+    await db.transaction().execute(async (trx) => {
+      await trx.updateTable('innings').set({ closed_at: new Date() }).where('id', '=', innings.id).execute();
+
+      const superOver1Totals = await trx
+        .selectFrom('innings_totals')
+        .select('runs')
+        .where('innings_id', '=', innings.id)
+        .executeTakeFirst();
+
+      await trx
+        .insertInto('innings')
+        .values({
+          id: randomUUID(),
+          match_id: match.id,
+          innings_number: 4,
+          batting_team_id: innings.bowling_team_id,
+          bowling_team_id: innings.batting_team_id,
+          is_super_over: true,
+          max_overs: 1,
+          target: (superOver1Totals?.runs ?? 0) + 1,
+        })
+        .execute();
+
+      await trx.updateTable('matches').set({ status: 'super_over', updated_at: new Date() }).where('id', '=', match.id).execute();
+
+      await writeAuditLog(trx, {
+        actorUserId: req.user!.sub,
+        entityType: 'match',
+        entityId: match.id,
+        action: 'close_innings',
+        afterState: { innings_number: 3, next_innings_number: 4 },
+      });
+    });
+
+    res.json({ ok: true, next_innings_number: 4 });
+    return;
+  }
+
+  // inningsNumber is 2 (deciding the main match) or 4 (deciding a super
+  // over) — compare it against the first innings of its own pair, not
+  // always innings 1, so a super over is judged on its own two innings.
+  const firstOfPairNumber = inningsNumber === 4 ? 3 : 1;
+  const isSuperOverDecider = inningsNumber === 4;
+
   const [firstTotals, secondTotals] = await Promise.all([
     db
       .selectFrom('innings')
       .innerJoin('innings_totals', 'innings_totals.innings_id', 'innings.id')
       .select(['innings_totals.runs', 'innings_totals.wickets'])
       .where('innings.match_id', '=', match.id)
-      .where('innings.innings_number', '=', 1)
+      .where('innings.innings_number', '=', firstOfPairNumber)
       .executeTakeFirstOrThrow(),
     db
       .selectFrom('innings')
@@ -590,30 +640,85 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
 
   const outcome = resolveMatchResult(firstTotals, secondTotals, rules);
 
+  // A tie needs an actual super over only if the rules call for one AND
+  // this isn't already the super over deciding its own tie — we don't
+  // chain further super overs on a tied super over (see matchResult.ts /
+  // CLAUDE.md: keep the simplification explicit rather than guessing at
+  // repeat-super-over ordering rules).
+  if (outcome.kind === 'tie' && outcome.superOverNeeded && !isSuperOverDecider) {
+    await db.transaction().execute(async (trx) => {
+      await trx.updateTable('innings').set({ closed_at: new Date() }).where('id', '=', innings.id).execute();
+
+      const pairFirst = await trx
+        .selectFrom('innings')
+        .select(['batting_team_id', 'bowling_team_id'])
+        .where('match_id', '=', match.id)
+        .where('innings_number', '=', firstOfPairNumber)
+        .executeTakeFirstOrThrow();
+
+      // The side that bowled second in the match just finished (i.e. batted
+      // first) bats first in the Super Over — same order as this match's
+      // second innings, which is the mirror of its first.
+      await trx
+        .insertInto('innings')
+        .values({
+          id: randomUUID(),
+          match_id: match.id,
+          innings_number: 3,
+          batting_team_id: pairFirst.bowling_team_id,
+          bowling_team_id: pairFirst.batting_team_id,
+          is_super_over: true,
+          max_overs: 1,
+          target: null,
+        })
+        .execute();
+
+      await trx.updateTable('matches').set({ status: 'super_over', updated_at: new Date() }).where('id', '=', match.id).execute();
+
+      await writeAuditLog(trx, {
+        actorUserId: req.user!.sub,
+        entityType: 'match',
+        entityId: match.id,
+        action: 'tie_start_super_over',
+        afterState: { innings_number: inningsNumber, next_innings_number: 3 },
+      });
+    });
+
+    res.json({ ok: true, super_over: true, next_innings_number: 3 });
+    return;
+  }
+
+  const superOverSuffix = isSuperOverDecider ? ' (Super Over)' : '';
+
   await db.transaction().execute(async (trx) => {
     await trx.updateTable('innings').set({ closed_at: new Date() }).where('id', '=', innings.id).execute();
 
-    const innings1 = await trx
+    const pairFirst = await trx
       .selectFrom('innings')
       .select(['batting_team_id', 'bowling_team_id'])
       .where('match_id', '=', match.id)
-      .where('innings_number', '=', 1)
+      .where('innings_number', '=', firstOfPairNumber)
       .executeTakeFirstOrThrow();
 
     if (outcome.kind === 'tie') {
       await trx
         .updateTable('matches')
-        .set({ result: 'tie', status: 'completed', result_note: 'Tied', updated_at: new Date() })
+        .set({
+          result: 'tie',
+          status: 'completed',
+          result_note: isSuperOverDecider ? 'Tied — Super Over also tied' : 'Tied',
+          updated_at: new Date(),
+        })
         .where('id', '=', match.id)
         .execute();
     } else if (outcome.kind === 'batting_first_won') {
       await trx
         .updateTable('matches')
         .set({
-          result: innings1.batting_team_id === match.team_a_id ? 'team_a_won' : 'team_b_won',
-          winner_team_id: innings1.batting_team_id,
+          result: pairFirst.batting_team_id === match.team_a_id ? 'team_a_won' : 'team_b_won',
+          winner_team_id: pairFirst.batting_team_id,
           win_margin_runs: outcome.marginRuns,
-          result_note: `Won by ${outcome.marginRuns} run(s)`,
+          result_note: `Won by ${outcome.marginRuns} run(s)${superOverSuffix}`,
           status: 'completed',
           updated_at: new Date(),
         })
@@ -623,10 +728,10 @@ router.post('/matches/:id/innings/:n/close', requireAuth, requireMatchRole('orga
       await trx
         .updateTable('matches')
         .set({
-          result: innings1.bowling_team_id === match.team_a_id ? 'team_a_won' : 'team_b_won',
-          winner_team_id: innings1.bowling_team_id,
+          result: pairFirst.bowling_team_id === match.team_a_id ? 'team_a_won' : 'team_b_won',
+          winner_team_id: pairFirst.bowling_team_id,
           win_margin_wickets: outcome.marginWickets,
-          result_note: `Won by ${outcome.marginWickets} wicket(s)`,
+          result_note: `Won by ${outcome.marginWickets} wicket(s)${superOverSuffix}`,
           status: 'completed',
           updated_at: new Date(),
         })
@@ -784,6 +889,10 @@ router.post('/matches/:id/innings/:n/interruption', requireAuth, requireMatchRol
   }
   if (innings.max_overs == null) {
     res.status(422).json({ error: 'This innings has no overs quota set yet' });
+    return;
+  }
+  if (innings.is_super_over) {
+    res.status(422).json({ error: 'The CricHive Rain Rule does not apply to a Super Over' });
     return;
   }
 
