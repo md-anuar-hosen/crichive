@@ -402,27 +402,30 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     BuildContext context,
     MatchDetail match,
   ) async {
-    final enforce = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Follow-on available'),
-        content: const Text(
-          'The side that bowled second may enforce the follow-on, making the '
-          'other side bat again immediately. Otherwise, play continues in the '
-          'normal order.',
+    bool? enforce = false;
+    if (match.followOnAvailable) {
+      enforce = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Follow-on available'),
+          content: const Text(
+            'The side that bowled second may enforce the follow-on, making '
+            'the other side bat again immediately. Otherwise, play continues '
+            'in the normal order.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Bat again normally'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Enforce follow-on'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Bat again normally'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Enforce follow-on'),
-          ),
-        ],
-      ),
-    );
+      );
+    }
     if (enforce == null || !mounted) return;
 
     try {
@@ -578,87 +581,105 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
             match.whenOrNull(
                   data: (m) => PopupMenuButton<String>(
                     onSelected: (value) => _onScoringAction(context, value, m),
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'toss',
-                        child: Text('Record toss'),
-                      ),
-                      PopupMenuItem(
-                        value: 'xi_a',
-                        child: Text('Playing XI — ${m.teamA.label}'),
-                      ),
-                      PopupMenuItem(
-                        value: 'xi_b',
-                        child: Text('Playing XI — ${m.teamB.label}'),
-                      ),
-                      const PopupMenuItem(value: 'score', child: Text('Score')),
-                      const PopupMenuItem(
-                        value: 'manage_scorers',
-                        child: Text('Manage scorers'),
-                      ),
-                      if (dlsEnabled &&
-                          !isTest &&
-                          !_finishedStatuses.contains(m.status) &&
-                          m.innings.any(
-                            (i) => i.closedAt == null && !i.isSuperOver,
-                          ))
+                    itemBuilder: (context) {
+                      // Both innings 1 and 2 closed but innings 3 not started
+                      // yet — true whether or not the follow-on threshold was
+                      // reached, since starting innings 3 in the normal order
+                      // needs the exact same action when there's no decision
+                      // to make.
+                      final awaitingInnings3 =
+                          m.status == 'innings_break' &&
+                          m.innings.length == 2 &&
+                          m.innings.every((i) => i.closedAt != null);
+                      return [
                         const PopupMenuItem(
-                          value: 'interruption',
-                          child: Text('Record rain interruption'),
+                          value: 'toss',
+                          child: Text('Record toss'),
                         ),
-                      if (isTest && m.followOnAvailable)
-                        const PopupMenuItem(
-                          value: 'follow_on',
-                          child: Text('Start innings 3 / follow-on'),
-                        ),
-                      if (isTest &&
-                          [
-                            'toss_done',
-                            'live',
-                            'innings_break',
-                          ].contains(m.status))
                         PopupMenuItem(
-                          value: 'stumps',
-                          child: Text('Stumps — end day ${m.currentDay}'),
+                          value: 'xi_a',
+                          child: Text('Playing XI — ${m.teamA.label}'),
                         ),
-                      if (isTest && m.status == 'day_break')
-                        const PopupMenuItem(
-                          value: 'resume_play',
-                          child: Text('Resume play (next day)'),
+                        PopupMenuItem(
+                          value: 'xi_b',
+                          child: Text('Playing XI — ${m.teamB.label}'),
                         ),
-                      if (isTest && !_finishedStatuses.contains(m.status))
                         const PopupMenuItem(
-                          value: 'draw',
-                          child: Text(
-                            'End as draw',
-                            style: TextStyle(color: Colors.red),
+                          value: 'score',
+                          child: Text('Score'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'manage_scorers',
+                          child: Text('Manage scorers'),
+                        ),
+                        if (dlsEnabled &&
+                            !isTest &&
+                            !_finishedStatuses.contains(m.status) &&
+                            m.innings.any(
+                              (i) => i.closedAt == null && !i.isSuperOver,
+                            ))
+                          const PopupMenuItem(
+                            value: 'interruption',
+                            child: Text('Record rain interruption'),
                           ),
-                        ),
-                      if (!_finishedStatuses.contains(m.status))
-                        const PopupMenuItem(
-                          value: 'abandon',
-                          child: Text(
-                            'Abandon match',
-                            style: TextStyle(color: Colors.red),
+                        if (isTest && (m.followOnAvailable || awaitingInnings3))
+                          PopupMenuItem(
+                            value: 'follow_on',
+                            child: Text(
+                              m.followOnAvailable
+                                  ? 'Start innings 3 / follow-on'
+                                  : 'Start innings 3',
+                            ),
                           ),
-                        ),
-                      if (m.status == 'scheduled')
-                        const PopupMenuItem(
-                          value: 'cancel',
-                          child: Text(
-                            'Cancel match',
-                            style: TextStyle(color: Colors.red),
+                        if (isTest &&
+                            [
+                              'toss_done',
+                              'live',
+                              'innings_break',
+                            ].contains(m.status))
+                          PopupMenuItem(
+                            value: 'stumps',
+                            child: Text('Stumps — end day ${m.currentDay}'),
                           ),
-                        ),
-                      if (!_finishedStatuses.contains(m.status))
-                        const PopupMenuItem(
-                          value: 'forfeit',
-                          child: Text(
-                            'Record forfeit',
-                            style: TextStyle(color: Colors.red),
+                        if (isTest && m.status == 'day_break')
+                          const PopupMenuItem(
+                            value: 'resume_play',
+                            child: Text('Resume play (next day)'),
                           ),
-                        ),
-                    ],
+                        if (isTest && !_finishedStatuses.contains(m.status))
+                          const PopupMenuItem(
+                            value: 'draw',
+                            child: Text(
+                              'End as draw',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        if (!_finishedStatuses.contains(m.status))
+                          const PopupMenuItem(
+                            value: 'abandon',
+                            child: Text(
+                              'Abandon match',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        if (m.status == 'scheduled')
+                          const PopupMenuItem(
+                            value: 'cancel',
+                            child: Text(
+                              'Cancel match',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        if (!_finishedStatuses.contains(m.status))
+                          const PopupMenuItem(
+                            value: 'forfeit',
+                            child: Text(
+                              'Record forfeit',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                      ];
+                    },
                   ),
                 ) ??
                 const SizedBox.shrink(),
