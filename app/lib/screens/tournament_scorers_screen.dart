@@ -127,7 +127,7 @@ class TournamentScorersScreen extends ConsumerWidget {
               ref.invalidate(tournamentScorersProvider(tournamentSlug)),
           data: (context, list) {
             if (list.isEmpty) {
-              return const EmptyState(
+              return const RefreshableEmptyState(
                 message:
                     'No scorers added yet. Add one here, then assign them '
                     'to specific matches from each match screen.',

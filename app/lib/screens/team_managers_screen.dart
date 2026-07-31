@@ -128,7 +128,7 @@ class TeamManagersScreen extends ConsumerWidget {
           onRetry: () => ref.invalidate(teamManagersProvider(_key)),
           data: (context, list) {
             if (list.isEmpty) {
-              return const EmptyState(
+              return const RefreshableEmptyState(
                 message: 'No team managers added yet.',
                 icon: Icons.admin_panel_settings_outlined,
               );

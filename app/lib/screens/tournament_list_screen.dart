@@ -156,7 +156,9 @@ class _TournamentListScreenState extends ConsumerState<TournamentListScreen> {
                 onRetry: () => ref.invalidate(tournamentsProvider(_filter)),
                 data: (context, page) {
                   if (page.data.isEmpty) {
-                    return const EmptyState(message: 'No tournaments match those filters.');
+                    return const RefreshableEmptyState(
+                      message: 'No tournaments match those filters.',
+                    );
                   }
                   return ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),

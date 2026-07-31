@@ -210,7 +210,7 @@ class _TeamSquadScreenState extends ConsumerState<TeamSquadScreen> {
           onRetry: _refresh,
           data: (context, players) {
             if (players.isEmpty) {
-              return EmptyState(
+              return RefreshableEmptyState(
                 message: _manageMode
                     ? 'No players in the squad yet — add one below.'
                     : 'Squad not announced yet.',

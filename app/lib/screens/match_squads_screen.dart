@@ -71,7 +71,9 @@ class _TeamSquadList extends ConsumerWidget {
         ),
         data: (context, players) {
           if (players.isEmpty) {
-            return const EmptyState(message: 'Squad not announced yet.');
+            return const RefreshableEmptyState(
+              message: 'Squad not announced yet.',
+            );
           }
           return ListView.separated(
             physics: const AlwaysScrollableScrollPhysics(),

@@ -23,7 +23,10 @@ class LiveScreen extends ConsumerWidget {
           onRetry: () => ref.invalidate(liveMatchesProvider),
           data: (context, matches) {
             if (matches.isEmpty) {
-              return const EmptyState(message: 'No matches live right now.', icon: Icons.live_tv_outlined);
+              return const RefreshableEmptyState(
+                message: 'No matches live right now.',
+                icon: Icons.live_tv_outlined,
+              );
             }
             return ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),

@@ -196,7 +196,7 @@ class _FixturesTab extends ConsumerWidget {
         onRetry: () => ref.invalidate(fixturesProvider(slug)),
         data: (context, page) {
           if (page.data.isEmpty) {
-            return const EmptyState(
+            return const RefreshableEmptyState(
               message: 'No fixtures scheduled yet.',
               icon: Icons.sports_cricket_outlined,
             );
@@ -261,7 +261,7 @@ class _TeamsTab extends ConsumerWidget {
         onRetry: () => ref.invalidate(teamsProvider(slug)),
         data: (context, page) {
           if (page.data.isEmpty) {
-            return const EmptyState(message: 'No teams yet.');
+            return const RefreshableEmptyState(message: 'No teams yet.');
           }
           return ListView.separated(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -302,7 +302,7 @@ class _StandingsTab extends ConsumerWidget {
         onRetry: () => ref.invalidate(standingsProvider(slug)),
         data: (context, groups) {
           if (groups.isEmpty) {
-            return const EmptyState(
+            return const RefreshableEmptyState(
               message: 'Standings will appear once matches are played.',
             );
           }
@@ -385,34 +385,47 @@ class _BracketTab extends ConsumerWidget {
         onRetry: () => ref.invalidate(knockoutBracketProvider(slug)),
         data: (context, b) {
           if (!b.exists) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.emoji_events_outlined, size: 40),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'No knockout bracket yet.',
-                      textAlign: TextAlign.center,
-                    ),
-                    if (isAuthed) ...[
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  CreateBracketScreen(tournamentSlug: slug),
+            // A plain Center has no scrollable descendant for the enclosing
+            // RefreshIndicator to drag against, so pull-to-refresh would
+            // silently do nothing here — LayoutBuilder + SingleChildScrollView
+            // gives it one while keeping the content vertically centered.
+            return LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.emoji_events_outlined, size: 40),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'No knockout bracket yet.',
+                            textAlign: TextAlign.center,
+                          ),
+                          if (isAuthed) ...[
+                            const SizedBox(height: 16),
+                            FilledButton(
+                              onPressed: () async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => CreateBracketScreen(
+                                      tournamentSlug: slug,
+                                    ),
+                                  ),
+                                );
+                                ref.invalidate(knockoutBracketProvider(slug));
+                              },
+                              child: const Text('Generate bracket'),
                             ),
-                          );
-                          ref.invalidate(knockoutBracketProvider(slug));
-                        },
-                        child: const Text('Generate bracket'),
+                          ],
+                        ],
                       ),
-                    ],
-                  ],
+                    ),
+                  ),
                 ),
               ),
             );
@@ -536,7 +549,7 @@ class _AwardsTab extends ConsumerWidget {
           if (a.playerOfTournament == null &&
               a.mostRuns.isEmpty &&
               a.mostWickets.isEmpty) {
-            return const EmptyState(
+            return const RefreshableEmptyState(
               message: 'Awards will appear once matches are completed.',
             );
           }
