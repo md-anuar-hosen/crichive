@@ -42,4 +42,20 @@ class PendingDeliveryQueue {
       await prefs.setString(key, jsonEncode(remaining.map((d) => d.toJson()).toList()));
     }
   }
+
+  /// Removes the most recently queued delivery for [matchId] — the local
+  /// side of "undo" when the last ball scored never reached the server
+  /// (still offline), so there's nothing to void server-side.
+  Future<void> removeLast(String matchId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = await _key(matchId);
+    final existing = await all(matchId);
+    if (existing.isEmpty) return;
+    final remaining = existing.sublist(0, existing.length - 1);
+    if (remaining.isEmpty) {
+      await prefs.remove(key);
+    } else {
+      await prefs.setString(key, jsonEncode(remaining.map((d) => d.toJson()).toList()));
+    }
+  }
 }

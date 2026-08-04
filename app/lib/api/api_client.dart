@@ -773,6 +773,25 @@ class ApiClient {
     return all;
   }
 
+  /// Tail of the ball-by-ball feed (most recent [limit] deliveries, oldest
+  /// first) for seeding the live scoring screen's undo/over-history state —
+  /// cheaper than [getDeliveries] since it doesn't walk the whole innings.
+  Future<List<Delivery>> getRecentDeliveries(
+    String matchId,
+    int inningsNumber, {
+    int limit = 20,
+  }) async {
+    final res = await _dio.get(
+      '/matches/$matchId/innings/$inningsNumber/deliveries/recent',
+      queryParameters: {'limit': limit},
+    );
+    final body = res.data as Map<String, dynamic>;
+    return (body['data'] as List)
+        .cast<Map<String, dynamic>>()
+        .map(Delivery.fromJson)
+        .toList();
+  }
+
   Future<List<LiveMatch>> getLiveMatches() async {
     final res = await _dio.get('/live');
     final matches = (res.data as Map<String, dynamic>)['matches'] as List;

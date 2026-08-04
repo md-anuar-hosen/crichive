@@ -549,6 +549,10 @@ router.get('/players/:id', async (req, res) => {
 });
 
 router.get('/matches/:id', async (req, res) => {
+  // Overrides the router-wide 30s cache: a live match changes every few
+  // seconds, and a scorer re-fetching this same URL right after their own
+  // write (via ref.invalidate) must never see a stale, pre-write response.
+  res.set('Cache-Control', 'no-store');
   const scorecard = await getMatchScorecard(req.params.id);
   if (!scorecard) {
     res.status(404).json({ error: 'Match not found' });
@@ -591,6 +595,7 @@ router.get('/matches/:id/innings/:n/deliveries', async (req, res) => {
     db
       .selectFrom('deliveries')
       .select([
+        'id',
         'over_number',
         'ball_in_over',
         'sequence',
@@ -627,6 +632,75 @@ router.get('/matches/:id/innings/:n/deliveries', async (req, res) => {
   ]);
 
   res.json(paginated(rows, pagination, Number(countRow.count)));
+});
+
+// Lightweight tail of the ball-by-ball feed for the live scoring screen: the
+// last few deliveries (including id, so the client can void the most recent
+// one for "undo") without walking the full paginated history like the feed
+// above, which is sized for chart rendering over an entire innings.
+router.get('/matches/:id/innings/:n/deliveries/recent', async (req, res) => {
+  // Same reasoning as GET /matches/:id above: this feeds the scoring
+  // screen's own undo/over-history state right after it writes, so a cached
+  // response here is a correctness bug, not just staleness.
+  res.set('Cache-Control', 'no-store');
+  const match = await db.selectFrom('matches').select('id').where('id', '=', req.params.id).executeTakeFirst();
+  if (!match) {
+    res.status(404).json({ error: 'Match not found' });
+    return;
+  }
+
+  const inningsNumber = Number.parseInt(req.params.n, 10);
+  if (!Number.isInteger(inningsNumber) || inningsNumber < 1) {
+    res.status(400).json({ error: 'Invalid innings number' });
+    return;
+  }
+
+  const innings = await db
+    .selectFrom('innings')
+    .select('id')
+    .where('match_id', '=', match.id)
+    .where('innings_number', '=', inningsNumber)
+    .executeTakeFirst();
+  if (!innings) {
+    res.status(404).json({ error: `Innings ${inningsNumber} not found for this match` });
+    return;
+  }
+
+  const requestedLimit = Number.parseInt(String(req.query.limit ?? '20'), 10);
+  const limit = Math.min(Math.max(Number.isNaN(requestedLimit) ? 20 : requestedLimit, 1), 50);
+
+  const rows = await db
+    .selectFrom('deliveries')
+    .select([
+      'id',
+      'over_number',
+      'ball_in_over',
+      'sequence',
+      'striker_id',
+      'non_striker_id',
+      'bowler_id',
+      'runs_off_bat',
+      'extra_wides',
+      'extra_noballs',
+      'extra_byes',
+      'extra_legbyes',
+      'extra_penalty',
+      'is_legal_delivery',
+      'is_free_hit',
+      'wicket_kind',
+      'player_out_id',
+      'fielder_id',
+      'wagon_angle_deg',
+      'wagon_distance',
+      'commentary',
+    ])
+    .where('innings_id', '=', innings.id)
+    .where('voided_at', 'is', null)
+    .orderBy('sequence', 'desc')
+    .limit(limit)
+    .execute();
+
+  res.json({ data: rows.reverse() });
 });
 
 router.get('/live', async (_req, res) => {

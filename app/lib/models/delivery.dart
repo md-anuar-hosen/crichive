@@ -1,5 +1,6 @@
 class Delivery {
   const Delivery({
+    required this.id,
     required this.overNumber,
     required this.ballInOver,
     required this.sequence,
@@ -22,6 +23,7 @@ class Delivery {
     this.commentary,
   });
 
+  final String id;
   final int overNumber;
   final int ballInOver;
   final int sequence;
@@ -47,6 +49,7 @@ class Delivery {
   bool get isWicket => wicketKind != null;
 
   factory Delivery.fromJson(Map<String, dynamic> json) => Delivery(
+        id: json['id'] as String,
         overNumber: json['over_number'] as int,
         ballInOver: json['ball_in_over'] as int,
         sequence: json['sequence'] as int,
