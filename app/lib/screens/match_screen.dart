@@ -156,6 +156,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     try {
       await ref.read(apiClientProvider).abandonMatch(matchId, reason: reason);
       ref.invalidate(matchProvider(matchId));
+      ref.invalidate(liveMatchesProvider);
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -206,6 +207,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     try {
       await ref.read(apiClientProvider).cancelMatch(matchId, reason: reason);
       ref.invalidate(matchProvider(matchId));
+      ref.invalidate(liveMatchesProvider);
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -291,6 +293,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
                 : reasonController.text.trim(),
           );
       ref.invalidate(matchProvider(match.id));
+      ref.invalidate(liveMatchesProvider);
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -335,13 +338,15 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
           children: [
             Text(
               'CricHive Rain Rule: revises the target using a resource-based '
-              'method (not the licensed DLS). Currently ${oversRemainingBefore.toStringAsFixed(1)} overs remain.',
+              'method (not the licensed DLS). Currently '
+              '${formatDecimalOvers(oversRemainingBefore, ballsPerOver)} overs remain.',
             ),
             const SizedBox(height: 12),
             TextField(
               controller: oversController,
               decoration: const InputDecoration(
                 labelText: 'Overs remaining after stoppage',
+                hintText: 'overs.balls, e.g. 3.2 for 3 overs 2 balls',
               ),
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
@@ -364,7 +369,10 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
           ),
           FilledButton(
             onPressed: () {
-              final value = double.tryParse(oversController.text.trim());
+              final value = parseCricketOversToDecimal(
+                oversController.text.trim(),
+                ballsPerOver,
+              );
               Navigator.of(dialogContext).pop(value);
             },
             child: const Text('Record'),
@@ -505,6 +513,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen> {
     try {
       await ref.read(apiClientProvider).drawMatch(matchId);
       ref.invalidate(matchProvider(matchId));
+      ref.invalidate(liveMatchesProvider);
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -915,7 +924,7 @@ class _InningsCard extends StatelessWidget {
               ..._buildChaseHeadline(context, totals),
             if (innings.interruptions.isNotEmpty) ...[
               const SizedBox(height: 8),
-              _InterruptionBanner(innings: innings),
+              _InterruptionBanner(innings: innings, ballsPerOver: ballsPerOver),
             ],
             if (isOpen && innings.partnerships.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -1420,8 +1429,9 @@ class _WinProbabilityBar extends StatelessWidget {
 /// history for an innings. Never label this "DLS"/"D/L" — see
 /// backend/src/domain/rainRule for why.
 class _InterruptionBanner extends StatelessWidget {
-  const _InterruptionBanner({required this.innings});
+  const _InterruptionBanner({required this.innings, required this.ballsPerOver});
   final InningsDetail innings;
+  final int ballsPerOver;
 
   @override
   Widget build(BuildContext context) {
@@ -1429,9 +1439,10 @@ class _InterruptionBanner extends StatelessWidget {
     // Only ever shown for a limited-overs innings (the Rain Rule doesn't
     // apply to Test matches), so maxOvers is always set in practice.
     final maxOvers = innings.maxOvers ?? 0;
+    final maxOversDisplay = formatDecimalOvers(maxOvers, ballsPerOver);
     final headline = innings.target != null
-        ? 'Revised target: ${innings.target} off ${maxOvers.toStringAsFixed(1)} overs (CricHive Rain Rule)'
-        : 'Overs reduced to ${maxOvers.toStringAsFixed(1)} (CricHive Rain Rule)';
+        ? 'Revised target: ${innings.target} off $maxOversDisplay overs (CricHive Rain Rule)'
+        : 'Overs reduced to $maxOversDisplay (CricHive Rain Rule)';
 
     return Container(
       width: double.infinity,

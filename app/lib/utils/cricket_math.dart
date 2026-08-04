@@ -11,6 +11,30 @@ String formatOvers(int legalBalls, int ballsPerOver) {
   return '$overs.$balls';
 }
 
+/// Converts a real-number-of-overs value (e.g. `innings.maxOvers`, where 3.5
+/// literally means three and a half overs — not "3 overs, 5 balls") into
+/// cricket over notation ("3.3") for display. Never render such a value with
+/// `toStringAsFixed` directly: it looks like cricket notation but isn't.
+String formatDecimalOvers(double oversDecimal, int ballsPerOver) {
+  final totalBalls = (oversDecimal * ballsPerOver).round();
+  return formatOvers(totalBalls, ballsPerOver);
+}
+
+/// Inverse of [formatDecimalOvers]: parses a cricket-notation string like
+/// "3.2" (3 overs, 2 balls) typed by a scorer into the real-number-of-overs
+/// value the backend's rain-interruption API expects. Returns null if the
+/// balls component isn't a valid ball count for [ballsPerOver].
+double? parseCricketOversToDecimal(String input, int ballsPerOver) {
+  final trimmed = input.trim();
+  if (trimmed.isEmpty) return null;
+  final parts = trimmed.split('.');
+  final overs = int.tryParse(parts[0]);
+  if (overs == null || overs < 0) return null;
+  final balls = parts.length > 1 ? int.tryParse(parts[1]) : 0;
+  if (balls == null || balls < 0 || balls >= ballsPerOver) return null;
+  return (overs * ballsPerOver + balls) / ballsPerOver;
+}
+
 double oversAsDouble(int legalBalls, int ballsPerOver) => ballsPerOver == 0 ? 0 : legalBalls / ballsPerOver;
 
 /// Runs per full over, extrapolated from balls bowled so far.

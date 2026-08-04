@@ -524,6 +524,7 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
     try {
       await ref.read(apiClientProvider).closeInnings(matchId, inningsNumber);
       ref.invalidate(matchProvider(matchId));
+      ref.invalidate(liveMatchesProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
